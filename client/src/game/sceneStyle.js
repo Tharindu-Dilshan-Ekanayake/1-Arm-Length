@@ -1,8 +1,8 @@
 /**
- * The scene's whole look in one place: a football stadium on game day at golden hour -
- * a deep azure sky fading to warm peach at the horizon with a big low sun glowing beyond
- * the north end of the field, a turf pitch for a plaza, and pale concrete pavilions in
- * the home team's royal blue, white and gold, with a hazy city skyline behind them.
+ * The scene's whole look in one place: a sunny day in a blocky green valley - a bright
+ * blue sky fading to pale blue at the horizon with plenty of cloud, a high white sun, a
+ * turf park for a plaza, and grass-topped hills of checkered dirt all round it (hills.js)
+ * with the launch runway running off between them.
  *
  * Colours are sRGB hex, exactly as you would pick them in an image editor.
  *
@@ -21,17 +21,17 @@ export const TEAM = {
 }
 
 export const SKY = {
-  /** Straight up: deep azure. */
-  top: '#1d4fb6',
-  /** At eye level: warm peach. Fog uses the same colour so distant ground melts into the sky. */
-  horizon: '#ffb98c',
+  /** Straight up: bright sky blue. */
+  top: '#2f80ea',
+  /** At eye level: pale blue. Fog uses the same colour so distant ground melts into the sky. */
+  horizon: '#c6e6ff',
   /** Lower = the deep blue reaches further down towards the horizon. */
-  exponent: 0.42,
-  /** The low sun's glow round its direction, and how strong it is. */
-  sun: '#fff0c4',
-  glow: 0.9,
-  /** Thin streaky high clouds (0 none, 1 plenty), and stars (night stages only). */
-  clouds: 0.55,
+  exponent: 0.55,
+  /** The sun's glow round its direction, and how strong it is. */
+  sun: '#ffffff',
+  glow: 0.35,
+  /** High clouds (0 none, 1 plenty), and stars (night stages only). */
+  clouds: 0.85,
   stars: 0,
 }
 
@@ -84,12 +84,12 @@ export const VENUES = [
     crowd: PALETTE.crowd,
     flags: PALETTE.flags,
     pitch: { north: '#1f4fd8', south: '#14234f', border: '#ffffff', track: '#2a5bd0', apron: '#1b2a63' },
-    /** Beyond the turf round the plaza, and the turf strip itself. */
-    surround: PALETTE.asphalt,
+    /** Beyond the turf round the plaza (grass, under the hills), and the turf strip itself. */
+    surround: '#3fb23f',
     strip: PALETTE.turf,
     shopFloor: PALETTE.shopFloor,
-    logo: { rim: TEAM.gold, ring: TEAM.navy, inner: TEAM.blue, top: 'BACKYARD', bottom: 'STADIUM' },
-    endNorth: 'BACKYARD',
+    logo: { rim: TEAM.gold, ring: TEAM.navy, inner: TEAM.blue, top: 'STRETCH', bottom: 'PARK' },
+    endNorth: 'FLY FAR!',
     /** The start arch and the ball shop's stages and sign. */
     arch: { pillar: '#ffd21f', base: TEAM.navy, glow: '#ffe27a', crest: '#ffb81f' },
     shop: { band: '#ffd21f', strip: '#ffe27a', post: '#ffd21f', panel: TEAM.navy },
@@ -110,7 +110,7 @@ export const VENUES = [
     surround: '#f2dca0',
     strip: ['#f2dca0', '#ead196'],
     shopFloor: '#fbeed0',
-    logo: { rim: '#ffd27a', ring: '#0b6f86', inner: '#ff6f61', top: 'PALM BEACH', bottom: 'STADIUM' },
+    logo: { rim: '#ffd27a', ring: '#0b6f86', inner: '#ff6f61', top: 'PALM BEACH', bottom: 'PARK' },
     endNorth: 'PALM BEACH',
     arch: { pillar: '#16b8c4', base: '#0b6f86', glow: '#bff6ff', crest: '#ff6f61' },
     shop: { band: '#ff6f61', strip: '#ffd27a', post: '#16b8c4', panel: '#0b6f86' },
@@ -119,20 +119,19 @@ export const VENUES = [
 export const venueOf = (world) => VENUES[world] ?? VENUES[0]
 
 export const LIGHTS = {
-  /** Cool fill from the sky, warm bounce off the turf. */
-  hemiSky: '#a9c8ff',
-  hemiGround: '#d9c19a',
+  /** Cool fill from the sky, green bounce off the grass. */
+  hemiSky: '#cfe6ff',
+  hemiGround: '#a8c98e',
   hemiIntensity: 2.0,
 
-  /** A warm, low golden-hour sun. */
-  sunColor: '#ffcf96',
-  sunIntensity: 1.95,
+  /** A bright, high midday sun. */
+  sunColor: '#fff6e4',
+  sunIntensity: 1.9,
   /**
-   * Direction *towards* the sun: low in the north-west, beyond the far end of the field
-   * (the sky's glow sits there too), so the kick camera looks into a golden haze and
-   * long shadows fall back across the field towards it.
+   * Direction *towards* the sun: high in the north-west, beyond the far end of the runway
+   * (the sky's glow sits there too), so shadows fall short and back towards you.
    */
-  sunDirection: [-0.5, 0.42, -0.76],
+  sunDirection: [-0.4, 0.78, -0.48],
   /** 1 = shadows get no sunlight at all; lower = lighter shadows. */
   shadowIntensity: 0.6,
   /** Blur radius of shadow edges, in shadow-map texels. */

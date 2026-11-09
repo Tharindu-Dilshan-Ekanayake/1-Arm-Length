@@ -157,31 +157,30 @@ const heart = svg(
 )
 
 /**
- * A football: brown leather with a soft shine, two white stripes at each end and white
- * laces along the top, tilted, in a thick ink outline. Still named `tire`, so every place
- * that showed a ball (the shop, the stands, the HUD) shows a football.
+ * A rubber arm at full stretch: a long pink arm snaking up from the bottom left, ringed
+ * like a rubber band, ending in a big golden fist, with speed marks where it's pulled -
+ * in a thick ink outline. Still named `tire`, so every place that showed the template's
+ * tire (the LAUNCH button, the shop, the passes, the loading screen) shows the arm.
  */
-const FOOTBALL = 'M5 50C19 15 81 15 95 50C81 85 19 85 5 50Z'
+const STRETCH = 'M16 88C20 62 50 72 48 50S60 32 66 31'
 const tire = svg(
-  `<g transform="rotate(-32 50 50)">
-    <path d="${FOOTBALL}" fill="url(#fb-g)"/>
-    <g clip-path="url(#fb-c)" fill="none" stroke-linecap="round">
-      <g stroke="#fff" stroke-width="4">
-        <path d="M23 18Q14 50 23 82"/><path d="M32 16Q24 50 32 84"/>
-        <path d="M77 18Q86 50 77 82"/><path d="M68 16Q76 50 68 84"/>
-      </g>
-      <path d="M36 37H64" stroke="#fff" stroke-width="3.6"/>
-      <path d="M41 30V44M47 30V44M53 30V44M59 30V44" stroke="#fff" stroke-width="3.2"/>
-      <path d="M24 38Q36 24 54 23" stroke="#fff" stroke-width="5" opacity=".55"/>
-      <path d="M22 68Q40 80 70 76" stroke="#4a2008" stroke-width="5" opacity=".28"/>
-    </g>
-    <path d="${FOOTBALL}" fill="none" stroke="${OUT}" stroke-width="6" stroke-linejoin="round"/>
-  </g>`,
-  vgrad('fb-g', [
-    [0, '#d9814a'],
-    [0.5, '#a65228'],
-    [1, '#6e3014'],
-  ]) + `<clipPath id="fb-c"><path d="${FOOTBALL}"/></clipPath>`,
+  `<path d="${STRETCH}" fill="none" stroke="${OUT}" stroke-width="25" stroke-linecap="round"/>
+  <path d="${STRETCH}" fill="none" stroke="url(#ar-g)" stroke-width="15" stroke-linecap="round"/>
+  <path d="${STRETCH}" fill="none" stroke="#fff" stroke-width="15" stroke-dasharray="4 10" opacity=".5"/>
+  <circle cx="73" cy="27" r="17" fill="url(#ar-f)" stroke="${OUT}" stroke-width="6"/>
+  <path d="M66 12l3 8M74 10v10M82 12l-3 8" fill="none" stroke="${OUT}" stroke-width="3.5" stroke-linecap="round"/>
+  <path d="M61 20q2-6 6-8" fill="none" stroke="#fff" stroke-width="3.5" stroke-linecap="round" opacity=".85"/>
+  <path d="M6 60l10 4M7 73l10 1M30 94l3-9" stroke="#fff" stroke-width="4.5" stroke-linecap="round"/>
+  <path d="M6 60l10 4M7 73l10 1M30 94l3-9" stroke="${OUT}" stroke-width="1.5" stroke-linecap="round" opacity=".5"/>`,
+  vgrad('ar-g', [
+    [0, '#ffa3dc'],
+    [1, '#e2318c'],
+  ]) +
+    vgrad('ar-f', [
+      [0, '#fff0a0'],
+      [0.5, '#ffcf2e'],
+      [1, '#f08c00'],
+    ]),
 )
 
 /** A round potion flask with a cork, filled with `liquid` and a small badge icon. */
@@ -283,7 +282,42 @@ const soundOff = svg(
   SPEAKER_GRADIENT,
 )
 
+/** A quest scroll: parchment with two ticked lines and a red seal. */
+const quest = svg(
+  `<path d="M22 12h50c8 0 12 5 12 12v54c0 7-5 12-12 12H28c-7 0-12-5-12-12V18c0-4 2-6 6-6z" fill="url(#qu-g)" stroke="${OUT}" stroke-width="6" stroke-linejoin="round"/>
+  <path d="M28 34l6 6 10-12M28 58l6 6 10-12" fill="none" stroke="#2fae4a" stroke-width="6" stroke-linecap="round" stroke-linejoin="round"/>
+  <path d="M52 36h20M52 60h20" stroke="${OUT}" stroke-width="5" stroke-linecap="round" opacity=".55"/>
+  <circle cx="74" cy="80" r="11" fill="#ff4a5a" stroke="${OUT}" stroke-width="5"/>
+  <path d="M26 20h40" stroke="#fff" stroke-width="4" stroke-linecap="round" opacity=".8"/>`,
+  vgrad('qu-g', [
+    [0, '#fff6d6'],
+    [1, '#f2cf86'],
+  ]),
+)
+
+/** A streak flame: orange outside, gold within. */
+const flame = svg(
+  `<path d="M50 6c6 18 28 26 28 52 0 18-12 34-28 34S22 76 22 58c0-14 8-20 12-30 2 10 8 14 8 14 0-14 2-26 8-36z" fill="url(#fl-g)" stroke="${OUT}" stroke-width="6" stroke-linejoin="round"/>
+  <path d="M50 50c4 8 14 12 14 24 0 9-6 14-14 14s-14-5-14-14c0-8 6-12 8-18 2 5 6 6 6 6 0-5-2-8 0-12z" fill="#ffe56b"/>`,
+  vgrad('fl-g', [
+    [0, '#ffcf3a'],
+    [0.6, '#ff7a1e'],
+    [1, '#e8350f'],
+  ]),
+)
+
+/** Two friends side by side. */
+const friends = svg(
+  `<circle cx="34" cy="34" r="14" fill="#ffd27a" stroke="${OUT}" stroke-width="6"/>
+  <circle cx="66" cy="30" r="14" fill="#ffd27a" stroke="${OUT}" stroke-width="6"/>
+  <path d="M10 88c0-18 10-30 24-30s24 12 24 30z" fill="#4fb8ff" stroke="${OUT}" stroke-width="6" stroke-linejoin="round"/>
+  <path d="M44 84c0-18 9-30 22-30s24 12 24 30z" fill="#ff6ab8" stroke="${OUT}" stroke-width="6" stroke-linejoin="round"/>`,
+)
+
 export const ICON_SVGS = {
+  quest,
+  flame,
+  friends,
   sound,
   soundOff,
   starGold,

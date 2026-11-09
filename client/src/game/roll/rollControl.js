@@ -1,39 +1,40 @@
 import { Vector3 } from 'three'
 
-import { HIT_GRADES } from '@shared/balance'
+import { comboBonus, HIT_GRADES } from '@shared/balance'
 import { formatNumber } from '@shared/format'
-import { ROLL_RETURN } from '@shared/world'
+import { LAUNCH_STAND, ROLL_RETURN } from '@shared/world'
 
 import { sfx } from '../../audio/sfx'
 import { getGame } from '../../store/game'
 import { fadeThrough } from '../../ui/fade'
 import { burst, fireBurst } from '../fx/fxQueue'
 import { spawnScattered } from '../fx/popups'
+import { consumePull, launch } from '../launch'
 import { runtime } from '../runtime'
 import { zones } from '../worldLook'
 import { showHit } from './hudLink'
-import { createRideState, flightPeak, KICK_HIT, meterAtZ, PUSH_AHEAD, rideState, kickTimeAt } from './path'
+import { createRideState, flightPeak, KICK_HIT, meterAtZ, PULL_DIST, PUSH_AHEAD, rideState, kickTimeAt } from './path'
 
-/** How long the "+N Wins" result shows over the landed ball before you're back. */
+/** How long the "+N Wins" result shows over you, landed, before you're back. */
 const RESULT_HOLD_MS = 2600
 /** The skid sound starts this long before a normal stop. */
 const SKID_SOUND_LEAD = 0.9
 
 /**
- * The kick currently playing (the template's "roll"), read every frame by the camera, the
- * field and the effects. Everything about it is known when it starts (the authority already
- * resolved the distance, the walls and the Wins), so the client just plays it back: no
- * per-frame network traffic.
+ * The launch currently playing (the template's "roll"), read every frame by the camera,
+ * the runway, your avatar and the effects. Everything about it is known when it starts
+ * (the authority already resolved the distance and the Wins), so the client just plays it
+ * back: no per-frame network traffic.
  *
- * It's a ride state (see path.rideState: phase, launch, meter, air, spin, lean,
- * topple, position...) plus the roll's numbers. Your logical position stays on the
- * KICK ZONE while the ball flies (that's what the server checks); only the ball and the
- * camera go down the field.
+ * It's a ride state (see path.rideState: phase, meter, air, pitch, roll, grip, the pose
+ * weights, position...) plus the launch's numbers. Your logical position stays on the
+ * LAUNCH PAD while you fly (that's what the server checks); only your avatar and the
+ * camera go down the runway.
  */
 export const roll = {
   ...createRideState(),
   active: false,
-  /** True once the ball has landed and the result is showing. */
+  /** True once you've landed and the result is showing. */
   stopped: false,
   startedAt: 0,
   distance: 0,
@@ -47,16 +48,21 @@ export const roll = {
   broken: 0,
   best: false,
   tireId: 'bicycle',
-  /** How well the kick was timed (HIT_GRADES id), or null for Auto Kick. */
+  /** How well you let go (HIT_GRADES id), or null for Auto Launch. */
   hit: null,
-  /** Where the kick started: yard along the field and how far to the side. */
+  /** Where you launched from: metre along the runway and how far to the side. */
   fromMeter: 0,
   startX: 0,
+  /** How far back the stretch had walked you (metres): the snap starts from there. */
+  pull: 0,
+  /** PERFECTs in a row with this launch (0: not a PERFECT), and its lucky gift or null. */
+  combo: 0,
+  gift: null,
   /** performance.now() of the last landing, take-off and wall hit, for dust, shake and sound. */
   landedAt: 0,
   tookOffAt: 0,
   hitAt: 0,
-  /** performance.now() when the foot met the ball and it set off. */
+  /** performance.now() when you shot past the posts. */
   kickedAt: 0,
   /**
    * A graded hit's hit-stop: when it started (performance.now(), 0 if none this kick),
@@ -68,8 +74,8 @@ export const roll = {
   freezePower: 0,
   freezeLag: 0,
   /**
-   * The ball slamming down at the end of its arc: when (performance.now()), where, and
-   * how high it fell from - what the turf splash and its spray of grass need.
+   * You slamming down at the end of the arc: when (performance.now()), where, and how
+   * high you fell from - what the turf splash and its spray of grass need.
    */
   impactAt: 0,
   impact: new Vector3(),
@@ -127,14 +133,14 @@ export function advanceRoll(clockTime) {
   rideState((now - roll.startedAt - roll.lag) / 1000, roll, 0, roll)
   if (wasWaiting && roll.phase !== 'launch') {
     roll.kickedAt = now
-    footHit(now)
+    blastOff(now)
   }
   if (!wasAirborne && roll.airborne) {
     roll.tookOffAt = now
     sfx.jumpWhoosh()
   } else if (wasAirborne && !roll.airborne) {
-    // Slammed down from the top of its arc: the lane cracks open (Impact.jsx), the camera
-    // jolts, a moment of slow motion, and a boom.
+    // Slammed down from the top of the arc: the runway cracks open (Impact.jsx), the
+    // camera jolts, a moment of slow motion, and a boom.
     roll.landedAt = now
     roll.hitAt = now
     roll.impactAt = now
@@ -143,7 +149,7 @@ export function advanceRoll(clockTime) {
     roll.impactPeak = flightPeak(roll.distance - roll.fromMeter - PUSH_AHEAD, roll.hit)
     sfx.groundSmash(Math.min(1, roll.impactPeak / 32))
   }
-  // Each bounce on the turf after it: a tok, softer every time.
+  // Each belly bounce on the turf after it: a thud, softer every time.
   if (roll.bounces > wasBounces && wasBounces > 0) sfx.bounce(roll.bounces - 1)
   if (!wasCrashed && roll.crashed) {
     roll.hitAt = now
@@ -153,9 +159,9 @@ export function advanceRoll(clockTime) {
 }
 
 /**
- * How each grade of kick looks and sounds as the foot meets the ball: its burst off the
- * ball (FireBurst kind), confetti, how long time stands still and how hard the camera
- * reacts (0-1). The rest - the title - follows the grade too.
+ * How each grade of launch looks and sounds as you shoot past the posts: its burst
+ * (FireBurst kind), confetti, how long time stands still and how hard the camera reacts
+ * (0-1). The rest - the title - follows the grade too.
  */
 const HIT_FX = {
   perfect: { fire: 'perfect', palette: 'gold', count: 60, speed: 12, freezeMs: 650, power: 1 },
@@ -165,26 +171,30 @@ const HIT_FX = {
 }
 
 /**
- * The foot meeting the ball: the grade the timing meter gave it, straight away, so you
- * see why it flies as far as it does. GOOD, GREAT and PERFECT each get their own moment,
- * bigger every step: time stands still for a beat while a burst flies off the ball -
- * sparkles, an electric-blue blast, a column of fire - and the grade's title slams onto
- * the screen (HitFlash.jsx); then the ball blasts away with the lens punching wide and
- * the camera shaking (Roll.jsx). A WEAK one just plops off the foot.
+ * Shooting past the posts: the grade the stretch meter gave the launch, straight away, so
+ * you see why you fly as far as you do. GOOD, GREAT and PERFECT each get their own moment,
+ * bigger every step: time stands still for a beat while a burst flies off you - sparkles,
+ * an electric-blue blast, a column of fire - and the grade's title slams onto the screen
+ * (HitFlash.jsx); then you blast away with the lens punching wide and the camera shaking
+ * (Roll.jsx). A WEAK one just flops off the rubber.
  */
-function footHit(now) {
+function blastOff(now) {
   const grade = HIT_GRADES.find((g) => g.id === roll.hit)
   if (!grade) return
   const fx = HIT_FX[grade.id]
   const p = roll.position
   if (fx.count) burst({ x: p.x, y: p.y, z: p.z, count: fx.count, palette: fx.palette, speed: fx.speed })
+  // PERFECTs in a row: the combo and the Wins it adds.
+  if (grade.id === 'perfect' && roll.combo >= 2) {
+    timers.push(setTimeout(() => spawnScattered(`PERFECT COMBO x${roll.combo}! +${Math.round((comboBonus(roll.combo) - 1) * 100)}% WINS`, { scale: 1.25 }), 450))
+  }
   if (grade.id === 'weak') {
     spawnScattered(grade.label, { scale: 1.3 })
     sfx.weakHit()
     return
   }
-  // The freeze starts the moment the foot met the ball on the roll's clock, not at
-  // whichever frame noticed: on a slow frame the ball would be well away by then.
+  // The freeze starts the moment you passed the posts on the launch's clock, not at
+  // whichever frame noticed: on a slow frame you'd be well away by then.
   roll.freezeAt = Math.min(now, roll.startedAt + roll.lag + KICK_HIT * 1000)
   roll.freezeMs = fx.freezeMs
   roll.freezePower = fx.power
@@ -195,11 +205,20 @@ function footHit(now) {
   timers.push(setTimeout(() => sfx.perfectRelease(fx.power), fx.freezeMs))
 }
 
-/** Starts a kick the authority already resolved: the run-up, the foot meets the ball, off it goes. */
+/**
+ * Starts a launch the authority already resolved, from wherever your stretch had walked
+ * you back to: the rubber snaps, you're slung past the posts, and off you fly. (Auto
+ * Launch, and a launch the stretch had already let go of, start from full stretch.)
+ */
 export function beginRoll(result) {
   clearTimers()
   const game = getGame()
   const p = runtime.player.position
+  // How far back you'd walked from the posts' stand spot (your logical position: the
+  // server saw you there too). Auto Launch walks you all the way back as well.
+  const stretched = launch.gripping || launch.released
+  consumePull()
+  const back = Math.max(0, p.z - LAUNCH_STAND.z)
   Object.assign(roll, {
     active: true,
     stopped: false,
@@ -214,8 +233,11 @@ export function beginRoll(result) {
     best: result.best,
     tireId: result.tireId || game.profile.equippedTire,
     hit: result.hit ?? null,
-    fromMeter: meterAtZ(p.z),
-    startX: p.x,
+    fromMeter: meterAtZ(LAUNCH_STAND.z),
+    startX: LAUNCH_STAND.x,
+    pull: stretched || back > 0.2 ? back : PULL_DIST,
+    combo: result.combo || 0,
+    gift: result.gift || null,
     landedAt: 0,
     tookOffAt: 0,
     hitAt: 0,
@@ -230,7 +252,7 @@ export function beginRoll(result) {
   })
   rideState(0, roll, 0, roll)
   runtime.player.frozen = true
-  // Square up to the ball and the field, ready to kick it.
+  // Square up to the runway.
   runtime.player.yaw = Math.PI
   runtime.camera.mode = 'roll'
   game.startRoll({
@@ -240,17 +262,13 @@ export function beginRoll(result) {
     blocked: result.blocked ?? -1,
     duration: result.duration,
     best: result.best,
+    giftWins: result.gift?.wins || 0,
   })
 
-  // The wind-up's swish, then the foot meets the ball: a thump, and off it goes.
-  sfx.kickSwing()
-  timers.push(
-    setTimeout(() => {
-      sfx.kick()
-      sfx.rollStart()
-    }, KICK_HIT * 1000),
-  )
-  // A cartoon whistle as it falls from the top of its arc, ending as it slams down.
+  // The rubber letting go with a twang, then the whoosh past the posts.
+  sfx.rubberSnap(Math.min(1, roll.pull / PULL_DIST))
+  timers.push(setTimeout(() => sfx.rollStart(), KICK_HIT * 1000))
+  // A cartoon whistle as you fall from the top of the arc, ending as you slam down.
   const apex = kickTimeAt(0.5, result.duration)
   const land = kickTimeAt(1, result.duration)
   timers.push(setTimeout(() => sfx.fallWhistle(land - apex), apex * 1000))
@@ -262,10 +280,25 @@ export function beginRoll(result) {
       const f = roll.position
       burst({ x: f.x, y: f.y + 1.8, z: f.z, count: 50, palette: 'gold', speed: 9 })
       game.endRoll()
-      // A zone reached for the first time ever: its name and the prize, once.
+      // A stage reached for the first time ever: its name and the prize, once.
       const stages = zones()
       for (const zi of roll.discovered) {
-        game.showToast(`NEW ZONE: ${stages[zi].name}! +${formatNumber(stages[zi].discover)} Wins`)
+        game.showToast(`NEW STAGE: ${stages[zi].name}! +${formatNumber(stages[zi].discover)} Wins`)
+      }
+      // A lucky gift: a present bursting open over you, and what was in it.
+      const gift = roll.gift
+      if (gift) {
+        timers.push(
+          setTimeout(
+            () => {
+              sfx.reveal()
+              burst({ x: f.x, y: f.y + 2.4, z: f.z, count: 70, palette: 'confetti', speed: 11 })
+              const what = gift.wins ? `+${formatNumber(gift.wins)} Wins` : gift.label
+              game.showToast(`LUCKY GIFT! ${gift.wins ? `${gift.label}: ${what}` : what}`)
+            },
+            roll.discovered.length ? 1600 : 500,
+          ),
+        )
       }
       timers.push(setTimeout(() => fadeThrough(finishRoll), RESULT_HOLD_MS))
     }, result.duration * 1000),
@@ -273,8 +306,8 @@ export function beginRoll(result) {
 }
 
 /**
- * Back at the start, just short of the kick zone, camera behind you. With Auto Kick on
- * you stay on the zone instead, so the next kick goes straight away.
+ * Back at the start, just short of the launch pad, camera behind you. With Auto Launch
+ * on you stay on the pad instead, so the next launch goes straight away.
  */
 export function finishRoll() {
   clearTimers()

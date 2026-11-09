@@ -161,24 +161,39 @@ function paintLogo(ctx, [rx, ry, size], logo) {
     ctx.fill()
     ctx.restore()
   }
-  // The football: brown leather, white stripes near each end, white laces along the top.
+  // The emblem: a rubber arm at full stretch snaking up to a big golden fist (the same
+  // art as the game's icon, ui/icons.js), ringed like a rubber band.
   ctx.save()
-  ctx.translate(cx, cy)
-  ctx.rotate(-0.35)
-  const fx = size * 0.24
-  const fy = size * 0.14
+  const k = (size * 0.5) / 100
+  ctx.translate(cx - 50 * k, cy - 52 * k)
+  ctx.scale(k, k)
+  const arm = new Path2D('M16 88C20 62 50 72 48 50S60 32 66 31')
+  ctx.lineCap = 'round'
+  ctx.strokeStyle = '#1b1b1f'
+  ctx.lineWidth = 25
+  ctx.stroke(arm)
+  ctx.strokeStyle = '#ff6ab8'
+  ctx.lineWidth = 15
+  ctx.stroke(arm)
+  ctx.setLineDash([4, 10])
+  ctx.strokeStyle = 'rgba(255,255,255,0.6)'
+  ctx.stroke(arm)
+  ctx.setLineDash([])
   ctx.beginPath()
-  ctx.ellipse(0, 0, fx, fy, 0, 0, Math.PI * 2)
-  ctx.fillStyle = '#8a4a24'
+  ctx.arc(73, 27, 17, 0, Math.PI * 2)
+  ctx.fillStyle = '#ffcf2e'
   ctx.fill()
-  ctx.lineWidth = size * 0.012
-  ctx.strokeStyle = '#3a1a0a'
+  ctx.lineWidth = 6
+  ctx.strokeStyle = '#1b1b1f'
   ctx.stroke()
-  ctx.clip()
-  ctx.fillStyle = '#ffffff'
-  for (const side of [-1, 1]) ctx.fillRect(side * fx * 0.62 - size * 0.012, -fy, size * 0.024, fy * 2)
-  ctx.fillRect(-fx * 0.32, -size * 0.008, fx * 0.64, size * 0.016)
-  for (let i = -2; i <= 2; i += 1) ctx.fillRect(i * fx * 0.13 - size * 0.006, -size * 0.03, size * 0.012, size * 0.06)
+  ctx.lineWidth = 3.5
+  ctx.beginPath()
+  // The gaps between the curled fingers, along the top of the fist.
+  for (const [x0, y0, x1, y1] of [[66, 12, 69, 20], [74, 10, 74, 20], [82, 12, 79, 20]]) {
+    ctx.moveTo(x0, y0)
+    ctx.lineTo(x1, y1)
+  }
+  ctx.stroke()
   ctx.restore()
 }
 
@@ -197,9 +212,9 @@ const ROUND_SIDES = 32
  */
 const cellsFor = (v) => ({
   logo: { rect: [0, 0, 0.5, 0.5], paint: (ctx, r) => paintLogo(ctx, r, v.logo) },
-  arch: { rect: [0.5, 0, 0.5, 0.15], paint: (ctx, r) => paintText(ctx, r, 'KICK IT', { fill: GOLD, edge: '#c2410c', slant: 0.14 }) },
-  shop: { rect: [0.5, 0.15, 0.5, 0.13], paint: (ctx, r) => paintText(ctx, r, 'BALL SHOP', { fill: GOLD, edge: '#c2410c', slant: 0.14 }) },
-  zone: { rect: [0.5, 0.28, 0.5, 0.12], paint: (ctx, r) => paintText(ctx, r, 'KICK ZONE', { fill: NAVY, edge: '#a08a10' }) },
+  arch: { rect: [0.5, 0, 0.5, 0.15], paint: (ctx, r) => paintText(ctx, r, 'STRETCH & FLY', { fill: GOLD, edge: '#c2410c', slant: 0.14 }) },
+  shop: { rect: [0.5, 0.15, 0.5, 0.13], paint: (ctx, r) => paintText(ctx, r, 'ARM SHOP', { fill: GOLD, edge: '#c2410c', slant: 0.14 }) },
+  zone: { rect: [0.5, 0.28, 0.5, 0.12], paint: (ctx, r) => paintText(ctx, r, 'LAUNCH PAD', { fill: NAVY, edge: '#a08a10' }) },
   ...Object.fromEntries(
     Array.from({ length: 6 }, (_, d) => [
       `digit${d}`,
@@ -239,8 +254,6 @@ function quadList() {
     // The logo is drawn as a round disc, not a square, so the yard lines cut back round it
     // never run under its (clear) corners.
     { cell: 'logo', width: LOGO.radius * 2, at: [LOGO.x, DECAL_Y, LOGO.z], yaw: 0, flat: true, round: true },
-    { cell: 'endSouth', width: END_ZONE_TEXT[0].width, at: [0, DECAL_Y, END_ZONE_TEXT[0].z], yaw: END_ZONE_TEXT[0].yaw, flat: true },
-    { cell: 'endNorth', width: END_ZONE_TEXT[1].width, at: [0, DECAL_Y, END_ZONE_TEXT[1].z], yaw: END_ZONE_TEXT[1].yaw, flat: true },
     ...DIRECTIONS.map((d, i) => ({ cell: `dir${i}`, width: d.width, at: [d.x, DECAL_Y, d.z], yaw: d.yaw, flat: true })),
     ...yardNumbers().map((n) => ({ cell: `digit${n.digit}`, width: DIGIT.width, at: [n.x, DECAL_Y, n.z], yaw: 0, flat: true })),
   ]

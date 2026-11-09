@@ -52,7 +52,8 @@ const inRollZone = () => ({ x: 0, y: 0, z: (ROLL_ZONE.minZ + ROLL_ZONE.maxZ) / 2
 /** A session for a fresh profile, recording every event it emits. */
 function makeSession(pos, profile = createProfile('a', 'A')) {
   const events = []
-  const session = new PlayerSession(profile, { now: 0, emit: (type, payload) => events.push({ type, payload }), getPosition: () => pos })
+  // No lucky gifts (rand): Wins stay exactly what the rules say.
+  const session = new PlayerSession(profile, { now: 0, rand: () => 0.99, emit: (type, payload) => events.push({ type, payload }), getPosition: () => pos })
   return { session, profile, events, count: (type) => events.filter((e) => e.type === type).length }
 }
 
@@ -68,7 +69,7 @@ test('numbers format like the HUD', () => {
     [0, 999, 1000, 1234, 7300, 14000, 2.5e6, 9999].map(formatNumber),
     ['0', '999', '1K', '1.2K', '7.3K', '14K', '2.5M', '9.9K'],
   )
-  assert.equal(formatDistance(1050.7), '1,050 yd')
+  assert.equal(formatDistance(1050.7), '1,050 m')
 })
 
 // --- Levels and rebirth ----------------------------------------------------------

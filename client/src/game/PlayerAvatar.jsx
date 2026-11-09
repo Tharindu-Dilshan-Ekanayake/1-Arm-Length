@@ -18,6 +18,8 @@ import { getSDK, safeCall } from '../bloxity/sdk'
 import { useBloxity } from '../bloxity/BloxityContext'
 import { getEmoteClip, updateLocalEmote } from '../bloxity/emotes'
 import { shareLook } from '../net/connection'
+import { getGame } from '../store/game'
+import { setArmLook } from './armStyles'
 import {
   animateRig,
   applyPart,
@@ -77,10 +79,12 @@ function fallbackMotion(delta) {
  *   own units: Bloxity authors the rig ~6.4 units tall with the feet at y=0, far bigger
  *   than the game's metric scale, so the model is measured and rescaled. `handRef` is
  *   an object beside the avatar that gets moved onto the right palm every frame, for
- *   anything held. `onStep` reports loading progress.
+ *   anything held. `onStep` reports loading progress. `armsId`, if given, is asked every
+ *   frame which arms (shared/balance.js TIRES id) this player wears: their arms are
+ *   painted to match (armStyles.js) - the starter Noodle Arms keep the avatar's own skin.
  */
 export const BloxityAvatar = forwardRef(function BloxityAvatar(
-  { equipped, proportions, onReady, onStep, targetHeight = 1.8, motionRef, handRef, emoteSource, local = false, ...props },
+  { equipped, proportions, onReady, onStep, targetHeight = 1.8, motionRef, handRef, emoteSource, armsId, local = false, ...props },
   ref,
 ) {
   // three's own GLTFLoader (the one the cosmetics use too), not drei's useGLTF, which
@@ -289,6 +293,7 @@ export const BloxityAvatar = forwardRef(function BloxityAvatar(
       updateEmote(rig, emotePlayer, emote, Math.min(delta, 0.1), getEmoteClip)
       placeFollowers(rig)
       if (handRef?.current) placeHand(rig, handRef.current)
+      if (armsId) setArmLook(bodyRef.current?.material, armsId())
     } catch {
       // A malformed payload must not kill the render loop.
     }
@@ -327,9 +332,13 @@ export const PlayerAvatar = forwardRef(function PlayerAvatar(props, ref) {
       local
       onStep={game.loadingStep}
       emoteSource={updateLocalEmote}
+      armsId={yourArms}
     />
   )
 })
+
+/** The arms you've equipped, for your avatar's paint. */
+const yourArms = () => getGame().profile.equippedTire
 
 /** The SDK's characterAccessoryMatrix(character, bone), or null on an SDK without it. */
 function characterAccessoryMatrix() {

@@ -7,6 +7,7 @@ import {
   PAD_HEIGHT,
   PAD_RADIUS,
   PAD_X,
+  padBarHeight,
   padCenterZ,
   SHOP_SIGN,
   SHOP_SIGN_FACING,
@@ -23,10 +24,10 @@ import { venueOf } from '../sceneStyle'
  */
 
 /**
- * Per-pad look, in pad order (matches PADS in shared/balance.js): the mat's base, top,
- * glowing ring and centre emblem, the treadmill's side rails and its console screen, the
- * track floor beyond it, and the colour of its labels. `beach` ones (Palm Beach's surf
- * treadmills) have surfboards for rails, a wave-blue belt and a surfboard and palm on top.
+ * Per-bar look, in pad order (matches PADS in shared/balance.js): the mat's base, top,
+ * glowing ring and centre emblem, the bar frame's posts and its rubber grips, the gym
+ * floor beyond it, and the colour of its labels. `beach` ones (Palm Beach's surf bars)
+ * have surfboard posts and a surfboard and palm on top of their board.
  */
 export const PAD_THEMES = [
   { base: '#1f5fc8', top: '#3f9cff', ring: '#9fe8ff', emblem: '#ffffff', rail: '#1d5fd6', court: '#2c4fa8', screen: '#5fd6ff', text: '#5fd6ff' },
@@ -36,15 +37,17 @@ export const PAD_THEMES = [
   { base: '#5a2a9a', top: '#8a4cff', ring: '#ff7ad9', emblem: '#ffffff', rail: '#6a2fd0', court: '#4a2a8a', screen: '#ff7ad9', text: '#c69bff' },
   { base: '#1a8ab8', top: '#7ff0ff', ring: '#ffffff', emblem: '#9b6bff', rail: '#14a3c9', court: '#1f7aa8', screen: '#ffffff', text: '#9fe8ff', style: STYLE.GLOW },
   { base: '#1b2266', top: '#2a1450', ring: '#c35cff', emblem: '#ffd21f', rail: '#2a1450', court: '#1b1f5c', screen: '#ffd21f', text: '#d39bff', style: STYLE.GALAXY },
-  // Palm Beach's beach treadmills: sand and surf, then a deep-sea wave.
+  // Palm Beach's beach bars: sand and surf, then a deep-sea wave.
   { base: '#e8c27a', top: '#ffe29a', ring: '#3fd8ff', emblem: '#ff7a3a', rail: '#2fb8e0', court: '#d9b46a', screen: '#3fd8ff', text: '#5fe6ff', beach: true },
   { base: '#0b4f8a', top: '#1a8fd8', ring: '#7ff6ff', emblem: '#ffffff', rail: '#0a6fb8', court: '#0b3f72', screen: '#7ff6ff', text: '#7ff6ff', style: STYLE.GLOW, beach: true },
 ]
 
+/** Where each hand grips the bar, either side of the middle. */
+const BAR_GRIP_X = 0.62
 const LINE = '#f4f7fb'
 const LEG = '#3a3f4a'
-const BELT = '#23262f'
-/** The multiplier backboard: high above the runner's head, and compact. Labels centre on it (lobbyLabels). */
+const STEEL = '#c9d2de'
+/** The multiplier backboard: high above the bar, and compact. Labels centre on it (lobbyLabels). */
 export const BOARD_BOTTOM = 4.8
 export const BOARD_HEIGHT = 3.6
 
@@ -54,9 +57,9 @@ const CYL = new CylinderGeometry(1, 1, 1, 12)
 const BALL = new SphereGeometry(1, 12, 8)
 
 /**
- * A pad's running track, east of its mat: a coloured floor with white lines and a low
- * barrier at the back. Boxes go in `blocks`: no draw calls of their own. (The treadmill
- * itself stands on the mat and just east of it: buildTreadmill.)
+ * A bar's gym floor, east of its mat: a coloured floor with white lines and a low barrier
+ * at the back. Boxes go in `blocks`: no draw calls of their own. (The bar itself stands
+ * over the mat: buildPullUpBar.)
  */
 function buildCourt(blocks, z, theme) {
   const courtLength = COURT_BACK_X - (TABLE_NEAR_X - 0.4)
@@ -74,52 +77,60 @@ function buildCourt(blocks, z, theme) {
   blocks.addOn(COURT_BACK_X, 0.75, z, 0.26, 0.08, COURT_HALF * 2, theme.ring, STYLE.GLOW)
 }
 
+/** A dumbbell lying along Z at (x, y, z): a steel handle and a weight each end. */
+function addDumbbell(props, x, y, z, color, size = 1) {
+  props.add(CYL, { position: [x, y, z], rotation: [Math.PI / 2, 0, 0], scale: [0.05 * size, 0.7 * size, 0.05 * size], color: STEEL })
+  for (const s of [-1, 1]) {
+    props.add(DISC, { position: [x, y, z + s * 0.3 * size], rotation: [Math.PI / 2, 0, 0], scale: [0.2 * size, 0.12 * size, 0.2 * size], color })
+  }
+}
+
 /**
- * The treadmill under the runner's feet (the runner stands at the mat's centre facing
- * east): a dark belt whose ribs slide back under them (STYLE.BELT, animated by the
- * shader's clock - no per-frame work here), side rails in the pad's colour with a glowing
- * edge, a roller at each end, then east of the mat the console - a post with a glowing
- * screen and two handrails back towards the runner - and, behind it, the big backboard
- * the pad's multiplier label (labels/lobbyLabels.js) hangs in front of.
+ * The pull-up bar over the mat (the trainee stands at its centre facing east, the bar
+ * across in front of their raised hands): two posts in the bar's colour with glowing
+ * caps, a steel bar between them at padBarHeight over the mat (higher with every bar) with rubber grips where the hands
+ * go, then east of the mat a weights bench with a rack of dumbbells and, behind it, the
+ * big backboard the bar's multiplier label (labels/lobbyLabels.js) hangs in front of.
  *
  * Everything east of x = TABLE_NEAR_X stays inside the pad's static collider
  * (shared/world.js), so what you can't walk through is what's drawn.
  */
-function buildTreadmill(blocks, props, z, theme) {
+function buildPullUpBar(blocks, props, z, theme, height) {
   const top = PAD_HEIGHT
-  // The belt, its two side rails with a glowing edge (or, on a surf treadmill, a
-  // surfboard each side with a white stripe), and a roller at each end.
-  blocks.addOn(PAD_X, top, z, 4.2, 0.05, 1.5, theme.beach ? '#123f66' : BELT, STYLE.BELT)
+  const barY = top + height
+  const postZ = 1.35
+  // The frame: a post either side (surfboards on a beach bar), feet, glowing caps.
   for (const s of [-1, 1]) {
+    const pz = z + s * postZ
+    blocks.addOn(PAD_X, top, pz, 0.9, 0.12, 0.7, LEG, STYLE.SMOOTH)
     if (theme.beach) {
-      props.add(BALL, { position: [PAD_X, top + 0.1, z + s * 0.97], scale: [2.45, 0.14, 0.36], color: theme.rail })
-      props.add(BALL, { position: [PAD_X, top + 0.1, z + s * 0.97], scale: [2.0, 0.15, 0.08], color: '#ffffff' })
+      props.add(BALL, { position: [PAD_X, top + (height + 0.4) / 2, pz], scale: [0.36, (height + 0.4) / 2, 0.14], color: theme.rail })
+      props.add(BALL, { position: [PAD_X, top + (height + 0.4) / 2, pz], scale: [0.08, (height + 0.2) / 2, 0.15], color: '#ffffff' })
     } else {
-      blocks.addOn(PAD_X, top, z + s * 0.92, 4.6, 0.16, 0.34, theme.rail, STYLE.SMOOTH)
-      blocks.addOn(PAD_X, top + 0.16, z + s * 0.92, 4.4, 0.04, 0.12, theme.ring, STYLE.GLOW)
+      blocks.addOn(PAD_X, top + 0.12, pz, 0.3, height + 0.2, 0.3, theme.rail, STYLE.SMOOTH)
+      blocks.addOn(PAD_X, top + 0.6, pz, 0.34, 0.08, 0.34, theme.ring, STYLE.GLOW)
     }
-    props.add(CYL, { position: [PAD_X + s * 2.15, top + 0.1, z], rotation: [Math.PI / 2, 0, 0], scale: [0.14, 1.5, 0.14], color: LEG })
+    blocks.addOn(PAD_X, top + height + 0.32, pz, 0.42, 0.16, 0.42, theme.ring, STYLE.GLOW)
   }
-
-  // The console: a post from the ground with a glowing screen, a button and a handrail
-  // each side back towards the runner at hand height.
-  const cx = PAD_X + 3.2
-  blocks.addOn(cx, 0, z, 0.9, 0.12, 1.8, LEG, STYLE.SMOOTH)
-  blocks.addOn(cx, 0.12, z, 0.3, 1.5, 0.4, theme.rail, STYLE.SMOOTH)
-  blocks.addOn(cx - 0.05, 1.55, z, 0.3, 0.9, 1.5, '#2a2f3a', STYLE.SMOOTH)
-  blocks.addOn(cx - 0.22, 1.7, z, 0.05, 0.6, 1.2, theme.screen, STYLE.GLOW)
-  blocks.addOn(cx - 0.22, 1.62, z, 0.07, 0.07, 0.5, '#ffffff', STYLE.GLOW)
-  props.add(BALL, { position: [cx - 0.2, 1.62, z + 0.55], scale: 0.09, color: '#ff3b3b', style: STYLE.GLOW })
+  // The bar, and a rubber grip where each hand goes.
+  props.add(CYL, { position: [PAD_X, barY, z], rotation: [Math.PI / 2, 0, 0], scale: [0.065, postZ * 2 + 0.2, 0.065], color: STEEL })
   for (const s of [-1, 1]) {
-    blocks.addOn(cx - 1.2, 1.3, z + s * 0.95, 2.5, 0.1, 0.12, LEG, STYLE.SMOOTH)
-    blocks.addOn(cx - 2.4, top, z + s * 0.95, 0.12, 1.4 - top, 0.12, LEG, STYLE.SMOOTH)
-    blocks.addOn(cx - 0.05, 0.12, z + s * 0.95, 0.14, 1.2, 0.14, LEG, STYLE.SMOOTH)
+    props.add(CYL, { position: [PAD_X, barY, z + s * BAR_GRIP_X], rotation: [Math.PI / 2, 0, 0], scale: [0.09, 0.34, 0.09], color: theme.screen, style: STYLE.GLOW })
   }
 
-  // The backboard behind the console, kept small and high so the follow camera behind the
-  // runner (west of the mat, looking east) sees it over their head rather than a wall of it:
-  // a navy panel in a rail-coloured frame with a glowing border in the pad's ring colour, on
-  // two thin posts, a football crest on top.
+  // East of the mat: a weights bench and a rack of dumbbells, in the bar's colours.
+  const cx = PAD_X + 3.4
+  blocks.addOn(cx - 0.6, 0, z, 1.0, 0.42, 1.9, LEG, STYLE.SMOOTH)
+  blocks.addOn(cx - 0.6, 0.42, z, 1.1, 0.16, 2.0, theme.rail, STYLE.SMOOTH)
+  blocks.addOn(cx + 0.7, 0, z, 0.7, 1.05, 2.0, '#2a2f3a', STYLE.SMOOTH)
+  blocks.addOn(cx + 0.7, 1.05, z, 0.8, 0.06, 2.1, theme.ring, STYLE.GLOW)
+  for (let i = 0; i < 3; i += 1) addDumbbell(props, cx + 0.7, 0.35 + i * 0.32, z + (i - 1) * 0.2, i === 1 ? theme.top : '#2a2f3a', 0.85 + i * 0.12)
+  addDumbbell(props, cx - 0.6, 0.78, z, theme.screen, 1)
+
+  // The backboard behind it, kept small and high so the follow camera behind the trainee
+  // (west of the mat, looking east) sees it over their head rather than a wall of it: a
+  // navy panel in a rail-coloured frame with a glowing border in the bar's ring colour,
+  // on two thin posts, a gold dumbbell on top.
   const bx = PAD_X + 5.6
   const by = BOARD_BOTTOM
   const bh = BOARD_HEIGHT
@@ -137,17 +148,14 @@ function buildTreadmill(blocks, props, z, theme) {
     blocks.add(bx, by + bh + 1.62, z + 0.9, 1.6, 0.18, 0.5, '#2fae4a', STYLE.SMOOTH, 0.4)
     blocks.add(bx, by + bh + 1.66, z + 0.9, 0.5, 0.16, 1.6, '#4cd36a', STYLE.SMOOTH, 0.4)
   } else {
-    // A little football on top: a brown ellipsoid with a white stripe at each end.
-    props.add(BALL, { position: [bx, by + bh + 0.5, z], scale: [0.4, 0.34, 0.62], color: '#8a4a24' })
-    for (const s of [-1, 1]) props.add(BALL, { position: [bx - 0.05, by + bh + 0.5, z + s * 0.27], scale: [0.42, 0.35, 0.05], color: '#ffffff' })
+    addDumbbell(props, bx, by + bh + 0.45, z, '#ffd21f', 1.6)
   }
 }
 
 /**
- * The training spots: round two-tier mats in the pad's colours with a glowing ring round
- * the top, each with its treadmill on and beside it and a running track beyond. The
- * rounded parts go into the world's props, the rest into its blocks: no draw calls of
- * their own.
+ * The training spots: round two-tier mats in the bar's colours with a glowing ring round
+ * the top, each with its pull-up bar over it and a gym floor beyond. The rounded parts go
+ * into the world's props, the rest into its blocks: no draw calls of their own.
  */
 export function buildPads(blocks, props) {
   for (let i = 0; i < PAD_COUNT; i += 1) {
@@ -157,12 +165,12 @@ export function buildPads(blocks, props) {
     props.add(DISC, { position: [PAD_X, PAD_HEIGHT * 0.4, z], scale: [r + 0.45, PAD_HEIGHT * 0.8, r + 0.45], color: theme.base })
     props.add(DISC, { position: [PAD_X, PAD_HEIGHT - 0.06, z], scale: [r, 0.14, r], color: theme.top, style: theme.style ?? STYLE.STUDS })
     props.add(RING, { position: [PAD_X, PAD_HEIGHT + 0.02, z], rotation: [Math.PI / 2, 0, 0], scale: [r - 0.25, r - 0.25, 1], color: theme.ring, style: STYLE.GLOW })
-    // The mat's emblem: a small football on a disc, either side of the belt's start.
+    // The mat's emblem: a glowing disc either side of where you stand.
     for (const s of [-1, 1]) {
       props.add(CYL, { position: [PAD_X - 1.9, PAD_HEIGHT + 0.03, z + s * 1.6], scale: [0.46, 0.04, 0.46], color: theme.emblem === '#1d1f22' ? '#ffffff' : theme.emblem })
-      props.add(BALL, { position: [PAD_X - 1.9, PAD_HEIGHT + 0.14, z + s * 1.6], scale: [0.4, 0.14, 0.22], color: '#8a4a24' })
+      props.add(CYL, { position: [PAD_X - 1.9, PAD_HEIGHT + 0.08, z + s * 1.6], scale: [0.26, 0.04, 0.26], color: theme.ring, style: STYLE.GLOW })
     }
-    buildTreadmill(blocks, props, z, theme)
+    buildPullUpBar(blocks, props, z, theme, padBarHeight(i))
     buildCourt(blocks, z, theme)
   }
 }
@@ -170,8 +178,8 @@ export function buildPads(blocks, props) {
 const WHITE = '#f4f7fb'
 
 /**
- * The ball shop: two open display stages (the stands on them are TireShop's) and the big
- * BALL SHOP sign behind, built like the start arch - white decks on a yellow band with
+ * The arm shop: two open display stages (the stands on them are TireShop's) and the big
+ * ARM SHOP sign behind, built like the start arch - white decks on a yellow band with
  * gold light strips round the edges. `detail` (off on LOW) adds the sign's bulbs.
  *
  * No two faces here share a plane: every layer stands a clear step proud of what it

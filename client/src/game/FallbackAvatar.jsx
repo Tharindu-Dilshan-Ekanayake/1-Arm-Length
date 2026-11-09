@@ -66,15 +66,19 @@ export function FallbackAvatar({ motionRef, handRef, onReady }) {
       _pivot.makeTranslation(part.x, part.y + pose.lift, 0)
       _q.setFromEuler(joint ? _e.set(joint.swing, joint.twist, joint.sway) : _e.set(0, 0, 0))
       _rot.makeRotationFromQuaternion(_q)
-      _p.set(0, joint ? -part.h / 2 : 0, 0)
-      _s.set(part.w, part.h, part.d)
+      // Rubber arms: longer and thinner as they stretch.
+      const stretch = part.joint === 'ArmL1' ? pose.stretchL : part.joint === 'ArmR1' ? pose.stretchR : 1
+      const thin = Math.min(1.15, Math.max(0.5, 1 / Math.sqrt(Math.max(0.3, stretch))))
+      const h = part.h * stretch
+      _p.set(0, joint ? -h / 2 : 0, 0)
+      _s.set(part.w * thin, h, part.d * thin)
       _m.compose(_p, _q.identity(), _s)
       instanced.setMatrixAt(i, _pivot.multiply(_rot).multiply(_m))
 
       // Anything held rides at the bottom of the right arm, turned with it.
       const hand = handRef?.current
       if (part === RIGHT_ARM && hand) {
-        hand.position.set(0, -part.h + 0.06, 0).applyEuler(_e)
+        hand.position.set(0, -h + 0.06, 0).applyEuler(_e)
         hand.position.x += part.x
         hand.position.y += part.y + pose.lift
         hand.quaternion.setFromEuler(_e)

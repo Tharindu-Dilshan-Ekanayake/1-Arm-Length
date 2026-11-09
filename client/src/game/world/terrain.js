@@ -186,9 +186,9 @@ function addFloodlight(blocks, x, z, v) {
 }
 
 /** The scoreboard behind the south pavilion's roof, on two pylons: its lettering is a world label (lobbyLabels.js). */
-export const SCOREBOARD = { x: 0, z: PAVILIONS[0].front + BACK + 2, y: WALL_TOP + 2.6, width: 30, height: 12 }
+export const SCOREBOARD = { x: 0, z: PLAZA.maxZ + 14, y: WALL_TOP + 2.6, width: 30, height: 12 }
 
-function addScoreboard(blocks, v) {
+export function addScoreboard(blocks, v) {
   const { x, z, y, width, height } = SCOREBOARD
   for (const side of [-1, 1]) blocks.addOn(x + side * (width / 2 - 3), 0, z + 0.4, 1.4, y, 1.2, v.dark, STYLE.SMOOTH)
   // Frame, navy screen, glowing gold edge and a row of blue/white lamps along the top.

@@ -1,5 +1,6 @@
 import { Vector3 } from 'three'
 
+import { createRideState } from '../game/roll/path'
 import { runtime } from '../game/runtime'
 import { getGame } from '../store/game'
 
@@ -44,8 +45,13 @@ export function upsertRemotePlayer(sessionId, state) {
       /** Follow state per equipped pet, grown as needed and reused. */
       pets: [],
       walkPhase: 0,
+      /** Their launch replayed down the runway (RemotePlayers fills it in while `flying`). */
+      flight: createRideState(),
+      flying: false,
+      pulling: false,
     }
-    r.shadow = { position: r.position, size: 1.1, visible: true }
+    // Its own point: while they fly it follows them down the runway (RemotePlayers).
+    r.shadow = { position: r.position.clone(), size: 1.1, visible: true }
     runtime.shadowCasters.add(r.shadow)
     remotePlayers.set(sessionId, r)
   }
@@ -53,6 +59,8 @@ export function upsertRemotePlayer(sessionId, state) {
   r.uid = state.uid || ''
   r.anim = state.anim
   r.tireId = state.tireId
+  r.level = state.level
+  r.rebirths = state.rebirths
   if (state.look !== r.lookKey) {
     r.lookKey = state.look
     try {

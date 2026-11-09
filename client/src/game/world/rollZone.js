@@ -1,20 +1,20 @@
-import { CylinderGeometry, SphereGeometry, TorusGeometry } from 'three'
+import { CylinderGeometry, SphereGeometry } from 'three'
 
-import { ROLL_ARCH, ROLL_ZONE } from '@shared/world'
+import { LAUNCH_POSTS, LAUNCH_STAND, MAX_PULL, ROLL_ARCH, ROLL_ZONE } from '@shared/world'
 
 import { STYLE } from '../materials'
+import { GRIP } from '../playerPose'
 import { venueOf } from '../sceneStyle'
 
-const WHITE = '#f4f7fb'
-/** The KICK ZONE strip: the one gameplay yellow, the same in every world. */
+/** The LAUNCH PAD strip: the one gameplay yellow, the same in every world. */
 const STRIP = '#ffd21f'
-const LEATHER = '#8a4a24'
+const WOOD = '#a8693a'
+const RUBBER = '#ff5fa8'
 
 const DISC = new CylinderGeometry(1, 1, 1, 28)
 const BALL = new SphereGeometry(1, 16, 12)
-const BAND = new TorusGeometry(1, 0.06, 6, 28)
 
-/** Height of the arch's beam, and the KICK IT sign hung on its face. */
+/** Height of the arch's beam, and the sign hung on its face. */
 const ARCH_TOP = 11
 export const ARCH_SIGN = { width: 12, height: 3, y: ARCH_TOP - 1.6, faceZ: ROLL_ARCH.z + 1.05 }
 
@@ -26,11 +26,14 @@ function addBolt(blocks, x, y, z, flip, color) {
 }
 
 /**
- * The start of the field: the yellow KICK ZONE across its mouth (painted with its name,
- * see signs.js) with navy chevrons pointing down the field, a glowing pad at each end,
- * and a big yellow-and-navy start arch over it with a KICK IT sign between lightning
- * bolts, crowned by a giant football - in the venue's colours (turquoise and teal with
- * coral at Palm Beach); the strip itself is the same yellow everywhere.
+ * The start of the runway: the yellow LAUNCH PAD across its mouth (painted with its name,
+ * see signs.js) with navy chevrons pointing down the runway, a glowing pad at each end,
+ * and a big yellow-and-navy start arch over it with a STRETCH & FLY sign between lightning
+ * bolts, crowned by a giant slingshot - in the venue's colours (turquoise and teal with
+ * coral at Palm Beach); the strip itself is the same yellow everywhere. In the middle of
+ * the pad stand the two launch posts you grab (LAUNCH_POSTS), a glowing ring on the spot
+ * behind them where you hold on, and rainbow chevrons pointing back the way you walk to
+ * stretch.
  *
  * Boxes go into the world's block set and the round parts into its props, so the whole
  * thing rides in those two draw calls. `detail` (off on LOW) adds the bulbs.
@@ -50,7 +53,7 @@ export function buildRollZone(blocks, props, { detail = true, world = 0 } = {}) 
   // field's edge.
   blocks.addOn(cx, 0, cz + 0.3, w + 1.2, 0.05, d + 0.6, c.base)
   blocks.addOn(cx, 0.05, cz + 0.3, w, 0.05, d - 0.2, STRIP)
-  // Chevrons on the strip, pointing down the field.
+  // Chevrons on the strip, pointing down the runway.
   for (const x of [-9, 9]) {
     for (const side of [-1, 1]) {
       blocks.add(x + side * 0.7, 0.12, cz, 2.2, 0.04, 0.6, c.base, STYLE.SMOOTH, side * 0.75)
@@ -63,8 +66,30 @@ export function buildRollZone(blocks, props, { detail = true, world = 0 } = {}) 
     props.add(DISC, { position: [x, 0.15, cz + 0.3], scale: [1.6, 0.06, 2.2], color: STRIP, style: STYLE.GLOW })
   }
 
+  // The launch posts: a chunky wooden post either side of the runway's middle on a navy
+  // foot, banded in gold, topped with a glowing grip at hand height.
+  for (const side of [-1, 1]) {
+    const x = LAUNCH_POSTS.x + side * LAUNCH_POSTS.halfGap
+    const z = LAUNCH_POSTS.z
+    blocks.addOn(x, 0.1, z, 0.8, 0.22, 0.8, c.base, STYLE.SMOOTH)
+    blocks.addOn(x, 0.32, z, 0.36, GRIP.y - 0.5, 0.36, WOOD, STYLE.STUDS)
+    for (const y of [0.6, 1.05]) blocks.addOn(x, y, z, 0.42, 0.08, 0.42, c.crest, STYLE.GLOW)
+    blocks.addOn(x, GRIP.y - 0.18, z, 0.46, 0.2, 0.46, '#ffffff', STYLE.SMOOTH)
+    props.add(BALL, { position: [x, GRIP.y + 0.06, z], scale: [0.26, 0.2, 0.26], color: RUBBER, style: STYLE.GLOW })
+  }
+  // Where you stand to grab them, and the way back: chevrons fading through the rainbow.
+  props.add(DISC, { position: [LAUNCH_STAND.x, 0.13, LAUNCH_STAND.z], scale: [0.95, 0.04, 0.95], color: '#ffffff' })
+  props.add(DISC, { position: [LAUNCH_STAND.x, 0.17, LAUNCH_STAND.z], scale: [0.75, 0.04, 0.75], color: RUBBER, style: STYLE.GLOW })
+  const CHEVRONS = ['#ff4a4a', '#ff9a1e', '#ffe23a', '#4be05a', '#2fd0ff', '#b05cff']
+  CHEVRONS.forEach((color, i) => {
+    const z = LAUNCH_STAND.z + 1.2 + (i * (MAX_PULL - 1)) / (CHEVRONS.length - 1)
+    for (const side of [-1, 1]) {
+      blocks.add(LAUNCH_STAND.x + side * 0.42, 0.15, z - 0.2, 1.1, 0.06, 0.28, color, STYLE.GLOW, side * 0.75)
+    }
+  })
+
   // The start arch: striped pillars either side, a beam across the top carrying the
-  // KICK IT sign and a gold crest, and a glowing orb on each pillar.
+  // sign and a gold crest, and a glowing orb on each pillar.
   const archZ = ROLL_ARCH.z
   const span = ROLL_ARCH.x * 2
   for (const side of [-1, 1]) {
@@ -81,8 +106,8 @@ export function buildRollZone(blocks, props, { detail = true, world = 0 } = {}) 
   blocks.addOn(0, ARCH_TOP - 0.2, archZ, span + 1, 1.5, 1.3, c.pillar, STYLE.STRIPES)
   blocks.addOn(0, ARCH_TOP - 0.45, archZ, span - 1.4, 0.25, 1.4, c.glow, STYLE.GLOW)
   blocks.addOn(0, ARCH_TOP + 1.3, archZ, span - 4, 0.3, 1, c.base, STYLE.SMOOTH)
-  // The KICK IT sign: a gold-framed navy panel, lettering painted on (signs.js), a
-  // lightning bolt either side.
+  // The sign: a gold-framed navy panel, lettering painted on (signs.js), a lightning bolt
+  // either side.
   blocks.addOn(0, ARCH_SIGN.y - ARCH_SIGN.height / 2 - 0.15, archZ + 0.75, ARCH_SIGN.width + 0.6, ARCH_SIGN.height + 0.3, 0.3, c.crest)
   blocks.addOn(0, ARCH_SIGN.y - ARCH_SIGN.height / 2, archZ + 0.8, ARCH_SIGN.width, ARCH_SIGN.height, 0.3, c.base, STYLE.SMOOTH)
   for (const side of [-1, 1]) addBolt(blocks, side * (ARCH_SIGN.width / 2 + 2.1), ARCH_SIGN.y - ARCH_SIGN.height / 2, archZ + 0.78, side, c.crest)
@@ -94,15 +119,18 @@ export function buildRollZone(blocks, props, { detail = true, world = 0 } = {}) 
     }
   }
 
-  // The crown: a giant football lying across the beam, its laces towards the plaza, two
-  // white bands near its ends, with a gold ring glowing behind it.
-  const ballY = ARCH_TOP + 4.6
-  blocks.addOn(0, ARCH_TOP + 1.4, archZ, 1.2, 1.4, 0.9, c.base, STYLE.SMOOTH)
-  props.add(BALL, { position: [0, ballY, archZ], scale: [3.6, 2.3, 2.3], color: LEATHER })
+  // The crown: a giant wooden slingshot standing on the beam - a handle, two prongs
+  // flaring out - with a pink rubber band stretched between the prongs, pulled back
+  // towards the plaza, and a gold ring glowing behind it.
+  const baseY = ARCH_TOP + 1.4
+  blocks.addOn(0, baseY, archZ, 1.2, 2.2, 1.2, WOOD, STYLE.SMOOTH)
   for (const side of [-1, 1]) {
-    props.add(BAND, { position: [side * 1.55, ballY, archZ], rotation: [0, Math.PI / 2, 0], scale: [2.08, 2.08, 1.4], color: WHITE })
+    blocks.add(side * 1.15, baseY + 3.3, archZ, 0.95, 2.8, 0.95, WOOD, STYLE.SMOOTH, 0, 0, -side * 0.5)
+    blocks.add(side * 1.85, baseY + 5.2, archZ, 0.85, 1.4, 0.85, WOOD, STYLE.SMOOTH, 0, 0, -side * 0.15)
+    blocks.addOn(side * 1.95, baseY + 5.9, archZ, 1.05, 0.25, 1.05, c.crest, STYLE.GLOW)
+    // The band, from each prong's tip back to the pouch.
+    blocks.add(side * 0.975, baseY + 5.5, archZ + 1.1, 0.24, 0.24, 2.94, RUBBER, STYLE.GLOW, -side * 0.725)
   }
-  props.add(DISC, { position: [0, ballY, archZ - 1.4], rotation: [Math.PI / 2, 0, 0], scale: [4.6, 0.3, 4.6], color: c.crest, style: STYLE.GLOW })
-  blocks.addOn(0, ballY - 0.06, archZ + 2.26, 2.2, 0.12, 0.14, WHITE, STYLE.SMOOTH)
-  for (let i = -2; i <= 2; i += 1) blocks.addOn(i * 0.42, ballY - 0.3, archZ + 2.24, 0.12, 0.6, 0.14, WHITE, STYLE.SMOOTH)
+  props.add(BALL, { position: [0, baseY + 5.5, archZ + 2.2], scale: [0.7, 0.55, 0.45], color: RUBBER, style: STYLE.GLOW })
+  props.add(DISC, { position: [0, baseY + 4.2, archZ - 1.2], rotation: [Math.PI / 2, 0, 0], scale: [4.6, 0.3, 4.6], color: c.crest, style: STYLE.GLOW })
 }

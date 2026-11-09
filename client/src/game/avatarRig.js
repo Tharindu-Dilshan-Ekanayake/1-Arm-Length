@@ -15,6 +15,7 @@ import {
 import { mergeGeometries } from 'three/examples/jsm/utils/BufferGeometryUtils.js'
 
 import { BACK_BONE, HAT_BONE, NECK_OFFSET_BONE, PART_SLOTS, WORN_SLOTS } from '../bloxity/avatarAssets'
+import { patchArmMaterial } from './armStyles'
 import { computePose, POSED_BONES } from './playerPose'
 
 /**
@@ -71,6 +72,10 @@ export function collectRig(root) {
     restInverse: {},
     /** Pairs worn on hands and feet, placed every frame (placeFollowers). */
     followers: [],
+    /** Shoulder to the bottom of the hand in the rest pose, in rig units (0: unknown). */
+    armLen: 0,
+    /** The proportions' armLength, as last applied (the stretch is measured against it). */
+    armLengthScale: 1,
   }
 
   const meshBySlot = new Map(
@@ -136,6 +141,12 @@ export function collectRig(root) {
     }
 
     rig.restInverse = restInverses(root)
+
+    // The rubber arms are stretched against the arm's real length: shoulder joint to the
+    // bottom of the hand, in the bind pose.
+    const shoulder = skeleton.bones.find((b) => b.name === 'ArmL1')
+    const handEnd = skeleton.bones.find((b) => b.name === 'ArmL2_leaf')
+    if (shoulder && handEnd) rig.armLen = shoulder.getWorldPosition(new Vector3()).distanceTo(handEnd.getWorldPosition(new Vector3()))
 
     // The palm: the bottom of the right arm mesh, a little up from its end, found in
     // the bind pose and kept in the forearm bone's frame so it follows the arm. (A
@@ -326,11 +337,18 @@ function plainGeometry(source) {
 export function mergeBody(rig) {
   const parts = rig.skinnedMeshes
   if (!rig.skeleton || parts.length === 0) return null
-  const pieces = parts.map((mesh) => plainGeometry(mesh.geometry))
+  const arms = new Set([rig.partMeshes.arm_L, rig.partMeshes.arm_R])
+  const pieces = parts.map((mesh) => {
+    const piece = plainGeometry(mesh.geometry)
+    // 1 on the arms: the shader paints them as the arms you've equipped (armStyles.js).
+    const count = piece.getAttribute('position').count
+    piece.setAttribute('aArm', new BufferAttribute(new Float32Array(count).fill(arms.has(mesh) ? 1 : 0), 1))
+    return piece
+  })
   const geometry = mergeGeometries(pieces, false)
   for (const piece of pieces) piece.dispose()
   if (!geometry) return null
-  const body = new SkinnedMesh(geometry, new MeshLambertMaterial({ map: parts[0].material?.map ?? null }))
+  const body = new SkinnedMesh(geometry, patchArmMaterial(new MeshLambertMaterial({ map: parts[0].material?.map ?? null })))
   body.name = 'merged_body'
   body.castShadow = true
   body.receiveShadow = true
@@ -505,6 +523,7 @@ export function applyProportions(rig, proportions) {
 
   const height = proportions.height ?? 1
   const armLength = proportions.armLength ?? 1
+  rig.armLengthScale = armLength
   const headScale = proportions.headScale ?? 1
   const neckHeight = proportions.neckHeight ?? 1
   const shoulderWidth = proportions.shoulderWidth ?? 1
@@ -564,6 +583,23 @@ export function applyProportions(rig, proportions) {
 
 const _animQ = new Quaternion()
 
+/** The arm's length (shoulder to the bottom of the hand) the shared pose assumes, in metres. */
+const POSE_ARM = 0.675
+
+/**
+ * Stretches an arm like rubber: `s` times as long along the bone (its local Y runs down
+ * the arm, so the forearm and hand go with it), and thinner as it goes, as rubber does.
+ */
+function stretchArm(rig, name, s) {
+  if (Math.abs(s - 1) < 0.002) return
+  const bone = rig.bones[name]?.bone
+  if (!bone) return
+  const thin = Math.min(1.15, Math.max(0.5, 1 / Math.sqrt(s)))
+  bone.scale.y *= s
+  bone.scale.x *= thin
+  bone.scale.z *= thin
+}
+
 /** Rotates a bone about one of its precomputed character-space axes. */
 function rotateBone(rig, name, which, angle) {
   if (!angle) return
@@ -590,6 +626,14 @@ export function animateRig(rig, motion, unitsPerMetre = 1) {
     rotateBone(rig, name, 'axisY', joint.twist)
   }
   rig.root.position.y = rig.rootRestY + pose.lift * unitsPerMetre
+  // Rubber arms. The pose assumes player.glb's arm at 1.8 m; an avatar with longer or
+  // shorter arms stretches them less or more, so the hands still land where aimed (a
+  // relaxed arm stays its own length).
+  const armMetres = rig.armLen > 0 ? (rig.armLen * rig.armLengthScale) / unitsPerMetre : POSE_ARM
+  const fit = POSE_ARM / Math.max(0.05, armMetres)
+  const fitted = (s) => (s <= 1 ? Math.max(0.6, s) : Math.max(1, s * fit))
+  stretchArm(rig, 'ArmL1', fitted(pose.stretchL))
+  stretchArm(rig, 'ArmR1', fitted(pose.stretchR))
 }
 
 /* ---------------------------------------------------------------------------

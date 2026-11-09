@@ -37,7 +37,7 @@ export const useGame = create((set, get) => ({
   leaderboards: null,
 
   /** Where the player is standing, from the ticker. */
-  zone: { pad: -1, padNear: -1, rollZone: false, stand: -1, egg: null, portal: null, freeReward: false, sphinx: false },
+  zone: { pad: -1, padNear: -1, rollZone: false, atPosts: false, stand: -1, egg: null, portal: null, freeReward: false, sphinx: false },
 
   /** Which modal panel is open: 'rebirth' | 'daily' | 'pets' | 'items' | 'store' | ... */
   panel: null,
@@ -75,7 +75,8 @@ export const useGame = create((set, get) => ({
 
   /** kind: 'info' | 'error' | 'success' | 'badge' */
 
-  startRoll: (roll) => set({ roll, pendingWins: roll.wins + roll.prize }),
+  // A lucky gift's Wins wait for the landing too.
+  startRoll: (roll) => set({ roll, pendingWins: roll.wins + roll.prize + (roll.giftWins || 0) }),
   endRoll: () => {
     const { roll } = get()
     set({

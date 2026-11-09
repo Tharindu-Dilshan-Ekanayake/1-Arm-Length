@@ -6,8 +6,7 @@ import { RARITIES, TIRES } from '@shared/balance'
 import { SHOP_STAGES, STAND_SIZE, TIRE_STANDS } from '@shared/world'
 
 import { useGame } from '../../store/game'
-import { getQuality } from '../../store/quality'
-import { ballLength, createBallMesh, disposeBallMesh } from '../ball'
+import { createArmDisplayMesh, disposeArmDisplayMesh } from '../armStyles'
 import { BlockSet, disposeBlocks } from '../blocks'
 import { createGlowInstances, disposeGlow } from '../glow'
 import { standLabelSpec, standState } from '../labels/lobbyLabels'
@@ -32,14 +31,12 @@ const _halo = new Vector3()
 const _haloQ = new Quaternion()
 const _haloS = new Vector3()
 
-/** Height of a stand's glowing cap above its pad; the ball floats over it. */
+/** Height of a stand's glowing cap above its pad; the arm floats over it. */
 const CAP_TOP = 1.12
-/** Showroom balls' radius (a football is this wide and ballLength times as long). */
-const SHOWN_BALL = 1.15
-/** How high a ball's centre floats over its stand: clear of the cap, a football's tip included. */
-const HOVER = CAP_TOP + SHOWN_BALL * 1.45 + 0.45
-/** Footballs stand tilted nose up as they turn, so you see their laces and stripes. */
-const FOOTBALL_TILT = 0.45
+/** Showroom arms' scale: a flexed arm about 2.3 m tall. */
+const SHOWN_ARM = 1.1
+/** How high an arm's middle floats over its stand: clear of the cap. */
+const HOVER = CAP_TOP + SHOWN_ARM * 1.15 + 0.35
 
 /**
  * Display stands, all in one block set. The first TIRE_STANDS.length blocks are the
@@ -59,13 +56,13 @@ function buildStands() {
       set.addOn(x, y - 0.1, z + side * e, slab + 0.5, 0.45, 0.3, '#c4ccd8', STYLE.SMOOTH)
       set.addOn(x + side * e, y - 0.1, z, 0.3, 0.45, slab + 0.2, '#c4ccd8', STYLE.SMOOTH)
     }
-    // A glowing square ring on the stand in the ball's own glow colour.
+    // A glowing square ring on the stand in the arms' own colour.
     const glow = tireGlow(id)
     for (const side of [-1, 1]) {
       set.addOn(x, y + 0.2, z + side * 1.25, 2.68, 0.06, 0.18, glow, STYLE.GLOW)
       set.addOn(x + side * 1.25, y + 0.2, z, 0.18, 0.06, 2.32, glow, STYLE.GLOW)
     }
-    // Low pedestal with a cap in the ball's own colour.
+    // Low pedestal with a cap in the arms' base colour.
     set.addOn(x, y + 0.2, z, 1.1, 0.7, 1.1, '#f4f7fb', STYLE.SMOOTH)
     set.addOn(x, y + 0.9, z, 1.5, CAP_TOP - 0.9, 1.5, tireRim(id), STYLE.GLOW)
   }
@@ -81,10 +78,10 @@ function buildStands() {
 }
 
 /**
- * The ball shop: twenty-four display stands on the two showroom stages, each with its
- * ball floating above it, turning slowly like a trophy on a turntable (footballs tilted
- * nose up, so their laces show). Stands recolour and their labels rewrite as you buy and
- * equip. Three draw calls: stands, balls, halos.
+ * The arm shop: twenty-four display stands on the two showroom stages, each with a pair
+ * of arms - one flexing arm, painted as those arms (armStyles.js) - floating above it,
+ * turning slowly like a trophy on a turntable and flexing a little. Stands recolour and
+ * their labels rewrite as you buy and equip. Three draw calls: stands, arms, halos.
  */
 export function TireShop() {
   const owned = useGame((s) => s.profile.ownedTires)
@@ -96,25 +93,22 @@ export function TireShop() {
   const assets = useMemo(() => {
     const stands = buildStands()
     const count = TIRES.length
-    // Every showroom ball, in one draw call. On LOW they're the lite sphere: seen from
-    // across the plaza, the full one's extra segments are below a pixel.
-    const balls = createBallMesh(count, getQuality().decorDensity < 0.5 ? 'lite' : 'full')
-    TIRES.forEach((tire, i) => balls.setBall(i, tire.id))
+    // Every showroom arm, in one draw call.
+    const balls = createArmDisplayMesh(count)
+    TIRES.forEach((tire, i) => balls.setArm(i, tire.id))
     balls.count = count
-    // A soft glow behind each ball in its rarity's colour: the rarer, the brighter it reads.
+    // A soft glow behind each arm in its rarity's colour: the rarer, the brighter it reads.
     const halos = createGlowInstances(count, 0.45)
     TIRES.forEach((tire, i) => halos.setColorAt(i, new Color(RARITIES[tire.rarity]?.color ?? '#ffffff')))
     halos.count = count
-    // Each ball's length (1 for round ones) never changes: looked up once, not per frame.
-    const lengths = TIRES.map((tire) => ballLength(tire.id))
-    return { stands, balls, halos, lengths }
+    return { stands, balls, halos }
   }, [])
 
   useEffect(
     () => () => {
       disposeBlocks(assets.stands)
       disposeGlow(assets.halos)
-      disposeBallMesh(assets.balls)
+      disposeArmDisplayMesh(assets.balls)
     },
     [assets],
   )
@@ -137,14 +131,14 @@ export function TireShop() {
     if (!halos || !balls) return
     const t = state.clock.elapsedTime
     for (const stand of TIRE_STANDS) {
-      const long = assets.lengths[stand.index]
       _p.set(stand.x, stand.y + HOVER + Math.sin(t * 1.6 + stand.index) * 0.15, stand.z)
-      // Turning round on the spot; a football (long > 1) leans nose up as it goes.
-      _q.setFromEuler(_e.set(long > 1 ? FOOTBALL_TILT : 0.12, t * 0.6 + stand.index * 0.7, 0, 'YXZ'))
-      balls.setMatrixAt(stand.index, _m.compose(_p, _q, _s.setScalar(SHOWN_BALL)))
-      // Set back behind the ball as seen from the camera, so it glows round it, not over it.
+      // Turning round on the spot, flexing: a squeeze of the bicep every couple of seconds.
+      const flex = Math.max(0, Math.sin(t * 2.2 + stand.index)) * 0.06
+      _q.setFromEuler(_e.set(0.08, t * 0.6 + stand.index * 0.7, 0, 'YXZ'))
+      balls.setMatrixAt(stand.index, _m.compose(_p, _q, _s.set(SHOWN_ARM * (1 + flex), SHOWN_ARM * (1 - flex * 0.5), SHOWN_ARM * (1 + flex))))
+      // Set back behind the arm as seen from the camera, so it glows round it, not over it.
       _halo.copy(_p).sub(state.camera.position).normalize().multiplyScalar(1.6).add(_p)
-      halos.setMatrixAt(stand.index, _m.compose(_halo, _haloQ, _haloS.setScalar(SHOWN_BALL * 3.8)))
+      halos.setMatrixAt(stand.index, _m.compose(_halo, _haloQ, _haloS.setScalar(SHOWN_ARM * 3.8)))
     }
     balls.instanceMatrix.needsUpdate = true
     halos.instanceMatrix.needsUpdate = true

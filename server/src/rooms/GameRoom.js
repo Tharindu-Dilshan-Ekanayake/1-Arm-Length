@@ -26,7 +26,7 @@ const DUPLICATE_LOGIN = 4100
 const POD = process.env.POD_NAME || `local-${process.pid}`
 
 /** What other players may be told someone is doing. */
-const ANIMS = ['idle', 'walk', 'run', 'jump']
+const ANIMS = ['idle', 'walk', 'run', 'jump', 'pull']
 /** A Boxity emote, replicated through `anim` as 'emote:<its 24-hex id>'. */
 const EMOTE_ANIM = /^emote:[a-f0-9]{24}$/
 /** Least time between two 'gemsCheck's from one player (each is a database query). */
@@ -132,6 +132,12 @@ export class GameRoom extends Room {
       now,
       emit: (type, payload) => client.send(type, payload),
       getPosition: () => player,
+      // The friends bonus: everyone else here, in the same world as you.
+      getOthers: () => {
+        let others = 0
+        for (const [sid, p] of this.state.players) if (sid !== client.sessionId && (p.world || 0) === (profile.world || 0)) others += 1
+        return others
+      },
       onPurchase: (productId) => {
         if (productId !== 'sphinx') return true
         const ok = takeSphinx()

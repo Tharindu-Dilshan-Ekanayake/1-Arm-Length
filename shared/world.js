@@ -15,10 +15,18 @@
  * Rects are `{ minX, maxX, minZ, maxZ }` on the ground plane.
  */
 
-export const SPAWN = { x: 0, z: 14 }
+/**
+ * The lobby is one long valley: you spawn at its far south end and a wide path runs
+ * north, 190 m, to the launch pad - with the pull-up bars lined up along the east side
+ * (each better than the last as you go north), the arm shop along the west, the eggs and
+ * leaderboards back by the spawn. Seen from spawn: the path stretching away ahead of you.
+ */
+export const SPAWN = { x: 0, z: 131 }
 
 /** The flat, walkable plaza. Hills surround it on every side but the track. */
-export const PLAZA = { minX: -50, maxX: 50, minZ: -40, maxZ: 36 }
+export const PLAZA = { minX: -50, maxX: 50, minZ: -40, maxZ: 150 }
+/** The path down its middle (half its width). */
+export const PATH_HALF = 5
 
 // --- The track ----------------------------------------------------------------------
 
@@ -32,10 +40,23 @@ export const SLOPE_ANGLE = 0
 /** Half the width of the canyon floor. */
 export const CANYON_HALF_WIDTH = 16
 
-/** The yellow ROLL ZONE at the canyon's mouth: standing on it lets you roll. */
-export const ROLL_ZONE = { minX: -13, maxX: 13, minZ: -40, maxZ: -33 }
+/** The yellow LAUNCH PAD (the template's roll zone) at the runway's mouth: launches go from here. */
+export const ROLL_ZONE = { minX: -13, maxX: 13, minZ: -40, maxZ: -21 }
 /** Where you're put back after a roll: just short of the zone, facing it. */
 export const ROLL_RETURN = { x: 0, z: -27 }
+
+/**
+ * The launch posts: a pair of posts standing at the front of the LAUNCH PAD, either side
+ * of the runway's middle, `halfGap` out. You grab their tops standing at LAUNCH_STAND
+ * (GRAB_RADIUS of it lets you), walk back towards the plaza to stretch your arms, and fly
+ * out between them. Walking back takes you at most MAX_PULL behind the stand - still on
+ * the pad as far as the server's launch check goes (ROLL_ZONE, give or take its slack).
+ */
+export const LAUNCH_POSTS = { x: 0, z: -38.8, halfGap: 0.8 }
+export const LAUNCH_STAND = { x: LAUNCH_POSTS.x, z: LAUNCH_POSTS.z + 1.1 }
+export const GRAB_RADIUS = 3.5
+export const MAX_PULL = 14
+export const nearLaunchPosts = (x, z, margin = 0) => Math.hypot(x - LAUNCH_STAND.x, z - LAUNCH_STAND.z) <= GRAB_RADIUS + margin
 /** The start arch's pillars, either side of the zone. */
 export const ROLL_ARCH = { x: 15.5, z: -37 }
 
@@ -51,16 +72,22 @@ export const WALKABLE = [PLAZA]
  */
 /** Seven treadmills, then Palm Beach's two beach treadmills at the north end of the row. */
 export const PAD_COUNT = 9
-export const PAD_PITCH = 7
+export const PAD_PITCH = 13
 /** Radius of a pad's top: standing within it is training. */
 export const PAD_RADIUS = 2.7
 /** The pads' centre line, and their tops, a step up from the plaza. */
-export const PAD_X = 33
+export const PAD_X = 24
 export const PAD_HEIGHT = 0.5
 /** Pad 0 (the free one) is the southernmost, nearest spawn; the rest run north. */
-const PAD0_Z = 24
+const PAD0_Z = 124
 
 export const padCenterZ = (index) => PAD0_Z - index * PAD_PITCH
+
+/**
+ * Each pull-up bar is higher than the last: the first hangs just over your head, the best
+ * ones tower - so the later you train, the more your rubber arms have to stretch.
+ */
+export const padBarHeight = (index) => 2.6 + 0.62 * Math.max(0, index)
 
 /**
  * Each pad's console area, on the ground east of it: these constants (named for the
@@ -95,22 +122,22 @@ export function padRect(index) {
  * first twelve balls on the low front one and the next twelve on the higher back one,
  * and a big BALL SHOP sign behind. Both stages are low enough to walk straight onto.
  */
-export const SHOP = { minX: -48, maxX: -22, minZ: -26, maxZ: 12 }
+export const SHOP = { minX: -42, maxX: -16, minZ: 10, maxZ: 112 }
 export const SHOP_STAGES = [
-  { minX: -34, maxX: -23.5, minZ: -25, maxZ: 11, height: 0.5 },
-  { minX: -47, maxX: -36.5, minZ: -25, maxZ: 11, height: 1 },
+  { minX: -28, maxX: -17.5, minZ: 11, maxZ: 111, height: 0.5 },
+  { minX: -41, maxX: -30.5, minZ: 11, maxZ: 111, height: 1 },
 ]
 /** The sign along the back (west) edge, facing the plaza, high enough to clear the labels. */
-export const SHOP_SIGN = { x: -48.6, minZ: -23, maxZ: 9, top: 16 }
+export const SHOP_SIGN = { x: -42.6, minZ: 14, maxZ: 108, top: 16 }
 /** Which way the sign faces: +1 east (towards the plaza). */
 export const SHOP_SIGN_FACING = 1
 export const STAND_SIZE = 4
 
 /** Rows of display stands, nearest the plaza first: two rows on each stage. */
-const STAND_ROWS_X = [-26, -31.5, -39, -44.5]
+const STAND_ROWS_X = [-20, -25.5, -33, -38.5]
 /** Stands per row, and how far apart along it. */
 const STANDS_PER_ROW = 6
-const STAND_PITCH = 6.2
+const STAND_PITCH = 15.6
 
 /**
  * Twenty-four stands, six to a row. `row` (0-3, front to back) lets the labels above
@@ -141,10 +168,10 @@ export const standRect = (stand) => ({
  * Volcano egg has a spot of its own, front right on the way to the kick zone.
  */
 export const EGG_STANDS = [
-  { eggId: 'basic', x: -14, z: 25 },
-  { eggId: 'meadow', x: -22, z: 25 },
-  { eggId: 'sunset', x: -30, z: 25 },
-  { eggId: 'unicorn', x: -38, z: 25 },
+  { eggId: 'basic', x: -10, z: 128 },
+  { eggId: 'meadow', x: -18, z: 128 },
+  { eggId: 'sunset', x: -26, z: 128 },
+  { eggId: 'unicorn', x: -34, z: 128 },
   { eggId: 'volcano', x: 14, z: -14, big: true },
   // Palm Beach's Beach Egg, the Volcano egg's twin across the plaza (hatches in Palm
   // Beach only; in World 1 it stands locked, a taste of what's through the portal).
@@ -153,27 +180,27 @@ export const EGG_STANDS = [
 export const EGG_TRIGGER_RADIUS = 4.2
 
 /** Limited premium pet on display. */
-export const SPHINX_STAND = { x: -46, z: 25 }
+export const SPHINX_STAND = { x: -44, z: 128 }
 
 /** Four boards along the back of the plaza, as in the reference. */
 export const LEADERBOARDS = [
-  { id: 'rebirths', x: -18, z: 33.5 },
-  { id: 'wins', x: -6, z: 33.5 },
-  { id: 'distance', x: 6, z: 33.5 },
-  { id: 'playtime', x: 18, z: 33.5 },
+  { id: 'rebirths', x: -18, z: 147.5 },
+  { id: 'wins', x: -6, z: 147.5 },
+  { id: 'distance', x: 6, z: 147.5 },
+  { id: 'playtime', x: 18, z: 147.5 },
 ]
 
 /** The world portal beside the start arch, to the west. Name and Wins in balance.js. */
 export const PORTALS = [{ id: 'world2', x: -28, z: -34, radius: 3.4 }]
 
-export const FREE_REWARD = { x: -12, z: 10, radius: 3 }
+export const FREE_REWARD = { x: 12, z: 132, radius: 3 }
 
 /**
  * Palm Beach's Secret Star (balance SECRET_STAR): tucked away behind the middle of the
  * leaderboards at the back of the plaza, where the camera never looks unless you go
  * round. Picked up within `radius`, in Palm Beach only.
  */
-export const STAR = { x: -6, z: 35.2, y: 1.4, radius: 1.8 }
+export const STAR = { x: -6, z: 149.2, y: 1.4, radius: 1.8 }
 
 // --- Collision ----------------------------------------------------------------------
 
@@ -203,6 +230,9 @@ export const STATIC_COLLIDERS = [
   ...Array.from({ length: PAD_COUNT }, (_, i) => box(COURT_BACK_X, padCenterZ(i), 0.15, COURT_HALF)),
   // Each portal ring's base; the swirl itself is walk-through.
   ...PORTALS.flatMap((p) => [box(p.x - p.radius, p.z, 0.6, 0.8), box(p.x + p.radius, p.z, 0.6, 0.8)]),
+  // The launch posts (you fly out between them, never walk through them).
+  box(LAUNCH_POSTS.x - LAUNCH_POSTS.halfGap, LAUNCH_POSTS.z, 0.2, 0.2),
+  box(LAUNCH_POSTS.x + LAUNCH_POSTS.halfGap, LAUNCH_POSTS.z, 0.2, 0.2),
   // The start arch's pillars.
   box(-ROLL_ARCH.x, ROLL_ARCH.z, 1, 1),
   box(ROLL_ARCH.x, ROLL_ARCH.z, 1, 1),

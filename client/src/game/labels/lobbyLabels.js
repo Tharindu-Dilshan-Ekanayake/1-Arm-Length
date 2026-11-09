@@ -22,8 +22,8 @@ export const TEXT = {
 const tint = (hex) => ['#ffffff', hex, hex]
 
 /**
- * "x4 POWER / Turbo Treadmill / LOCKED: 2 Rebirths", "x1 POWER / Starter Treadmill / FREE",
- * "x40 POWER / VERY OP! / 150K Wins"... (hung on each treadmill's backboard).
+ * "x4 POWER / Bubblegum Bar / LOCKED: 2 Rebirths", "x1 POWER / Wooden Bar / FREE",
+ * "x40 POWER / VERY OP! / 150K Wins"... (hung on each pull-up bar's backboard).
  */
 export function padLabelSpec(index, unlocked, world = 0) {
   const pad = PADS[index]
@@ -111,7 +111,7 @@ export function standLabelSpec(index, state) {
       ? rarityLine(tire)
       : { text: `${formatNumber(tire.cost)} Wins`, size: 40, icon: 'trophy', gradient: state === 'locked' ? TEXT.red : TEXT.price }
   return {
-    lines: [tag, { text: tire.name, size: 46, fill: '#ffffff' }, { text: `+${formatNumber(tire.power)} per kick`, size: 40, icon: 'heart', gradient: TEXT.gold }, last],
+    lines: [tag, { text: tire.name, size: 46, fill: '#ffffff' }, { text: `+${formatNumber(tire.power)} Power`, size: 40, icon: 'heart', gradient: TEXT.gold }, last],
     pxPerUnit: 70,
   }
 }
@@ -121,7 +121,7 @@ const standReserve = (index) => ({
   lines: [
     { text: 'CAN BUY!', size: 36 },
     { text: TIRES[index].name, size: 46 },
-    { text: `+${formatNumber(TIRES[index].power)} per kick`, size: 40, icon: 'heart' },
+    { text: `+${formatNumber(TIRES[index].power)} Power`, size: 40, icon: 'heart' },
     { text: `${formatNumber(TIRES[index].cost)} Wins`, size: 40, icon: 'trophy' },
   ],
 })
@@ -196,8 +196,8 @@ const scoreboardLabel = () => ({
   position: [SCOREBOARD.x, SCOREBOARD.y + 0.8 + SCOREBOARD.height / 2, SCOREBOARD.z - 1.5],
   spec: {
     lines: [
-      { text: 'KICK FIELD GOAL', size: 100, gradient: TEXT.gold },
-      { text: 'KICK FAR - WIN BIG - REBIRTH', size: 44, gradient: TEXT.white },
+      { text: 'RUBBER ARM LAUNCH', size: 100, gradient: TEXT.gold },
+      { text: 'STRETCH - FLY FAR - REBIRTH', size: 44, gradient: TEXT.white },
     ],
     pxPerUnit: 34,
   },

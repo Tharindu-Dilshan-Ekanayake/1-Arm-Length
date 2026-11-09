@@ -40,7 +40,7 @@ export function Price({ amount, size = 34, afford = true, className = '', style 
  * The game's standard chunky button: gradient face with a glossy top, black outline,
  * and a dark lip it presses down into (see .pp-chunky). Children are laid out centred.
  */
-export function ChunkyButton({ onClick, gradient = GRADIENTS.goldButton, className = '', style, children, disabled, title, radius = 14, border = 4 }) {
+export function ChunkyButton({ onClick, onPointerDown, gradient = GRADIENTS.goldButton, className = '', style, children, disabled, title, radius = 14, border = 4 }) {
   return (
     <button
       type="button"
@@ -48,6 +48,8 @@ export function ChunkyButton({ onClick, gradient = GRADIENTS.goldButton, classNa
       aria-label={title}
       disabled={disabled}
       onClick={onClick}
+      onPointerDown={onPointerDown}
+      onContextMenu={onPointerDown ? (e) => e.preventDefault() : undefined}
       className={`pp-btn pp-chunky pointer-events-auto relative flex items-center justify-center ${className}`}
       style={{
         background: gradient,

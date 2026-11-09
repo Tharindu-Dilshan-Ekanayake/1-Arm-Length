@@ -38,7 +38,7 @@ export function handleServerEvent(type, payload) {
         const tire = TIRES.find((t) => t.id === payload.profile.equippedTire)
         // The first ball bought ends the tutorial: say so too.
         const done = before.tutorialStep < TUTORIAL.length && payload.profile.tutorialStep >= TUTORIAL.length
-        if (tire) game.showToast(`NEW BALL: ${tire.name}!${done ? ' Tutorial complete - have fun!' : ''}`)
+        if (tire) game.showToast(`NEW ARMS: ${tire.name}!${done ? ' Tutorial complete - have fun!' : ''}`)
       }
       break
     }
@@ -58,12 +58,22 @@ export function handleServerEvent(type, payload) {
       break
 
     case 'roll': {
-      // The referee blows for the kick.
-      sfx.whistle()
-      // (How well it was timed shows as the boot meets the ball: rollControl.)
+      // (How well you let go shows as you shoot past the posts: rollControl.)
       beginRoll(payload)
       break
     }
+
+    case 'quest':
+      // One of today's quests finished: a chime and a nudge to claim it.
+      sfx.levelUp()
+      game.showToast(`QUEST COMPLETE: ${payload.text}! Claim it in Quests`)
+      break
+
+    case 'streak':
+      // Played past midnight: the streak's next day starts now.
+      sfx.wins()
+      game.showToast(`DAY ${payload.days} STREAK! x${payload.multiplier.toFixed(1)} Wins on every launch`)
+      break
 
     case 'pack':
       sfx.buy()
@@ -106,7 +116,7 @@ export function handleServerEvent(type, payload) {
       const world = WORLDS[payload.world]
       game.showToast(
         payload.world === 1
-          ? `WELCOME TO ${world.name.toUpperCase()}! x${world.wins} Wins on every kick!${payload.first ? ' A Secret Star is hidden here...' : ''}`
+          ? `WELCOME TO ${world.name.toUpperCase()}! x${world.wins} Wins on every launch!${payload.first ? ' A Secret Star is hidden here...' : ''}`
           : `Back in ${world.name}!`,
       )
       break

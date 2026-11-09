@@ -8,19 +8,17 @@ import { asToyInstance, BlockSet, disposeBlocks, PropBuilder } from '../blocks'
 import { glowTime } from '../glow'
 import { createToyMaterial, sharedMaterials, toyTime } from '../materials'
 import { venueOf } from '../sceneStyle'
-import { buildBeach } from './beach'
 import { createGroundGeometry, createGroundMap } from './ground'
 import { buildEggStands } from './eggs'
-import Ocean from './Ocean'
-import { buildPitch } from './pitch'
 import { buildPortalFrame } from './portalFrame'
 import { createPaintedSigns } from './signs'
 import { buildRollZone } from './rollZone'
 import { buildPads, buildShop } from './structures'
-import { buildTerrain } from './terrain'
+import { buildHills } from './hills'
+import { addScoreboard } from './terrain'
 
 /**
- * The static lobby: ground plane, every box (grandstands, crowd, flags, treadmills, stages) in
+ * The static lobby: ground plane, every box (hills, trees, pull-up bars, stages) in
  * one InstancedMesh, and every non-box prop (mats, rings...) merged into one mesh, plus
  * the painted signs (one atlas, one mesh). Four draw calls for the whole environment - five
  * at Palm Beach, whose ocean is a plane of its own.
@@ -38,7 +36,6 @@ export function World() {
   const camera = useThree((s) => s.camera)
   const scene = useThree((s) => s.scene)
   const [signs, setSigns] = useState([])
-  const beach = venueOf(world).beach
 
   // Drives every animated toy-material style (water...) and the sea.
   useFrame((state) => {
@@ -87,15 +84,15 @@ export function World() {
     performance.mark('pp:world-start')
     const { decorDensity, maxTexture } = useQuality.getState().settings
     const set = new BlockSet()
-    buildTerrain(set, { density: decorDensity, world })
+    // Blocky hills all round the valley (both worlds), the scoreboard on the south hilltop.
+    buildHills(set, { density: decorDensity })
+    addScoreboard(set, venueOf(world))
     const propBuilder = new PropBuilder()
     buildPads(set, propBuilder)
     buildShop(set, { detail: decorDensity >= 0.75, world })
     buildRollZone(set, propBuilder, { detail: decorDensity >= 0.75, world })
     buildPortalFrame(set)
     buildEggStands(set)
-    buildPitch(set, { hashes: decorDensity >= 0.5 })
-    if (venueOf(world).beach) buildBeach(set, propBuilder, { density: decorDensity })
 
     const map = createGroundMap(maxTexture, world)
     const groundMaterial = createToyMaterial({ instanced: false, vertexColors: false, map, studScale: 2 })
@@ -125,7 +122,6 @@ export function World() {
       <mesh geometry={ground.geometry} material={ground.material} receiveShadow={shadows} />
       <primitive object={blocks} castShadow={shadows} receiveShadow={shadows} />
       <primitive object={props} castShadow={shadows} receiveShadow={shadows} />
-      {beach && <Ocean />}
       {signs.map((sign) => (
         <mesh key={sign.texture.uuid} geometry={sign.geometry} material={sign.material} position={sign.position} rotation={sign.rotation} renderOrder={1} />
       ))}

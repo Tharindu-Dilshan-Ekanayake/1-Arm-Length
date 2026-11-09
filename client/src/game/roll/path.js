@@ -1,18 +1,18 @@
 import { Euler, Quaternion, Vector3 } from 'three'
 
 import { ROLL_LAUNCH } from '@shared/balance'
-import { SLOPE_ANGLE, TRACK_START_Z } from '@shared/world'
+import { MAX_PULL, SLOPE_ANGLE, TRACK_START_Z } from '@shared/world'
 
-import { KICK_IMPACT } from '../playerPose'
-import { BALL_SIZE, swellSize, TEE_AHEAD, TEE_BALL_SIZE } from '../kick'
+import { armGrowth } from '../armStyles'
+import { BODY, GRIP } from '../playerPose'
 
 /**
- * Geometry of the kick: one long, straight football field running north from the
- * plaza's edge, dead level (SLOPE_ANGLE is 0; the maths still allows a slope).
+ * Geometry of a launch: one long, straight runway running north from the plaza's edge,
+ * dead level (SLOPE_ANGLE is 0; the maths still allows a slope).
  *
- * Track metre `m` (a yard, to the player) is measured along the field from the start line
- * (the plaza's north edge). Before the start (m < 0) the ground is the plaza. Everything here is pure
- * maths and allocation-free, so the frame loop can call it freely.
+ * Track metre `m` is measured along the runway from the start line (the plaza's north
+ * edge). Before the start (m < 0) the ground is the plaza. Everything here is pure maths
+ * and allocation-free, so the frame loop can call it freely.
  */
 
 export const SIN = Math.sin(SLOPE_ANGLE)
@@ -62,39 +62,53 @@ export function slopeBoxPlacement(m, x, h) {
 /** Metres a world z is along the track (negative in the plaza). */
 export const meterAtZ = (z) => (z < TRACK_START_Z ? (TRACK_START_Z - z) / COS : TRACK_START_Z - z)
 
-// --- A kick -------------------------------------------------------------------------
-
-/** Radius of a kicked ball in flight (kick.BALL_SIZE; named for the template's tire). */
-export const TIRE_SIZE = BALL_SIZE
+// --- A launch ---------------------------------------------------------------------
 
 const clamp01 = (x) => Math.min(1, Math.max(0, x))
+const smooth = (a, b, x) => {
+  const t = clamp01((x - a) / (b - a))
+  return t * t * (3 - 2 * t)
+}
+
+/** How far back you can walk holding the posts, at full stretch, with the starter arms (metres). */
+export const PULL_DIST = 3.6
+/**
+ * How far back you can walk before your arms are at full stretch: only a few metres with
+ * your first arms at level 1, and much further as you buy better arms and level up (the
+ * same growth as the arms' length, armStyles.armGrowth), up to MAX_PULL - the launch pad's
+ * whole length.
+ */
+export function maxPullFor(tireId, level = 1, cap = 15) {
+  return 3 + (MAX_PULL - 3) * armGrowth(tireId, level, cap)
+}
+
+/** The flight sets off this far ahead of where you stood: just past the posts. */
+export const PUSH_AHEAD = GRIP.ahead + 0.6
+/** Seconds into a launch that you fly past the posts: the snap takes the whole launch. */
+export const KICK_HIT = ROLL_LAUNCH
+/** Let go, you hang on - straining, arms at full stretch - for this share of the snap. */
+const SNAP_HOLD = 0.16
+/** Lying flat, how high your middle (the pivot you dive about) is off the ground. */
+export const BODY_FLAT = 0.3
+/** Your middle's height off the ground standing, less BODY_FLAT: the flight starts there. */
+const LAUNCH_AIR = BODY.pivot - BODY_FLAT
+/** How big the flier reads to the trail and effects (they were sized for the ball). */
+export const TIRE_SIZE = 0.6
 
 /**
- * The ball rests on its tee this far ahead of you when you kick it, and the flight sets
- * off from there.
+ * The flight takes LAND_T of the launch's time after the snap; the rest is belly-flopping
+ * onto the turf, bouncing and getting up.
  */
-export const PUSH_AHEAD = TEE_AHEAD
-/**
- * Seconds into a kick that the foot meets the ball: the player runs up and swings
- * (playerPose.kickPose, over ROLL_LAUNCH), and the ball sits on its tee until then. The
- * kick's total time is the authority's, so the flight runs from here.
- */
-export const KICK_HIT = ROLL_LAUNCH * KICK_IMPACT
-
-/**
- * The flight takes LAND_T of the kick's time after the foot meets it; the rest is the ball
- * bouncing on the turf and settling in the grass.
- */
-const LAND_T = 0.84
-/** Bounces on the turf after it thumps down, over the first SETTLE of the time left. */
+const LAND_T = 0.86
+/** Belly bounces on the turf after you slam down, over the first SETTLE of the time left. */
 const BOUNCES = 2
-const SETTLE = 0.65
-/** How far the ball nestles into the grass once it has settled. */
-const SUNK = 0.04
+const SETTLE = 0.6
+/** Seconds to get up and start cheering, once you've stopped. */
+const STAND_UP = 0.45
 
 /**
- * How far along its distance (0-1) the ball is `t` of the way through its flight: off
- * the foot fast, slowing as it goes, and still moving as it slams down at the end.
+ * How far along its distance (0-1) the flight is `t` of the way through: off the posts
+ * fast, slowing as you go, still moving as you slam down at the end.
  */
 const progress = (t) => {
   const x = clamp01(t)
@@ -102,21 +116,18 @@ const progress = (t) => {
 }
 
 /**
- * Seconds into a kick of `duration` (launch included) at which the ball has flown `f`
- * (0-1) of its distance: 0.5 is the top of its arc, 1 the moment it slams down.
+ * Seconds into a launch of `duration` (the snap included) at which you've flown `f`
+ * (0-1) of the distance: 0.5 is the top of the arc, 1 the moment you slam down.
  */
 export const kickTimeAt = (f, duration) => KICK_HIT + LAND_T * (1.5 - Math.sqrt(2.25 - 2 * clamp01(f))) * Math.max(0.1, duration - KICK_HIT)
 
 /**
- * The flight: one high arc over the whole distance, thumping down exactly where the
- * authority says it stops - a splash of turf (Impact.jsx) - then a couple of bounces on
- * the grass and it settles there. The arc's peak grows with the distance (a short
- * kick is a lob, a long one soars) and with how well it was kicked (KICK_ARC: a WEAK
- * kick skims low, a PERFECT one soars high), capped so the field stays in view below it.
+ * The flight: one high arc over the whole distance, slamming down exactly where the
+ * authority says you stop - a splash of turf (Impact.jsx) - then a couple of belly
+ * bounces and you get up to celebrate. The arc's peak grows with the distance (a short
+ * hop stays low, a long one soars) and with how well you let go (KICK_ARC: a WEAK one
+ * skims low, a PERFECT one soars high), capped so the runway stays in view below you.
  */
-/** Height of the ball's bottom off the ground as it leaves the foot: it starts on the grass. */
-const LAUNCH_AIR = 0
-/** How high each meter grade's kick flies, against a plain kick's arc (Auto Kick: 1). */
 const KICK_ARC = { weak: 0.5, good: 0.85, great: 1.15, perfect: 1.45 }
 export const flightPeak = (distance, hit = null) =>
   Math.min(44, (4 + 0.6 * Math.sqrt(Math.max(0, distance))) * (KICK_ARC[hit] ?? 1))
@@ -127,52 +138,77 @@ export const createRideState = () => ({
   launch: 0,
   meter: 0,
   speed: 0,
-  /** Height of the ball's bottom off the field. */
+  /** Height of your middle off the ground, less BODY_FLAT (0: lying on it). */
   air: 0,
-  /** The ball's radius now: TEE_BALL_SIZE on the tee, swelling to BALL_SIZE as it flies. */
-  size: TEE_BALL_SIZE,
-  /** True while the ball is in its arc (until it first lands). */
+  size: TIRE_SIZE,
+  /** True while you're in the arc (until you first land). */
   airborne: false,
-  /** 0 in the air; 1 once it has slammed down, then one more for every hop after. */
+  /** 0 in the air; 1 once you've slammed down, then one more for every bounce after. */
   bounces: 0,
-  /** Turn about the ball's sideways axis (radians): its spin. */
-  spin: 0,
-  /** Template leftovers rideTurn still reads: always 0 for a ball. */
-  lean: 0,
-  topple: 0,
-  yaw: 0,
-  /** Never true: nothing on the lane stops a ball. */
+  /** How far the body is dived forward about its middle (0 upright, PI/2 flying flat). */
+  pitch: 0,
+  /** A barrel roll about the way you're flying (radians). */
+  roll: 0,
+  /** Metres from your middle ahead to the posts' grips while you still hold them, else -1. */
+  grip: -1,
+  /** How hard the rubber is still pulling (0-1), for the pose. */
+  strain: 0,
+  /** Pose weights: flying like a superhero, sprawled where you landed, up and cheering. */
+  fly: 0,
+  sprawl: 0,
+  cheer: 0,
+  /** Never true: nothing on the runway stops you. */
   crashed: false,
   x: 0,
+  /** Your middle: the point the body dives and rolls about. */
   position: new Vector3(),
 })
 
 /**
- * Everything about a kicked ball `elapsed` seconds into a kick - yours, or another
- * player's replayed from the same numbers, so both move identically. `ride` is
- * `{ fromMeter, startX, distance, duration }` (duration includes the launch); `lane` is
- * a sideways offset so balls don't overlap. Writes into `out` (see createRideState):
- *   phase    'launch' (on its tee, the kicker running up) | 'ride' | 'stopped'
- *   launch   0-1 through the launch
- *   meter    yards along the field; speed in yd/s along it
- *   air      height of its bottom off the field; airborne until it first lands
- *   size     its radius now
- *   position the ball's centre
+ * Everything about a launch `elapsed` seconds in - yours, or another player's replayed
+ * from the same numbers, so both fly identically. `ride` is `{ fromMeter, startX,
+ * distance, duration, hit, pull }` (duration includes the snap; `pull` is how far back
+ * the stretch had walked them, in metres - PULL_DIST if unknown); `lane` is a sideways
+ * offset so fliers don't overlap. Writes into `out` (see createRideState):
+ *   phase    'launch' (the rubber snapping you forward) | 'ride' | 'stopped'
+ *   meter    metres along the runway; speed in m/s along it
+ *   position your middle; pitch and roll say how the body lies
  */
 export function rideState(elapsed, ride, lane, out) {
   const start = ride.fromMeter + PUSH_AHEAD
   const end = Math.max(start + 1, ride.distance)
   const flightTime = Math.max(0.1, ride.duration - KICK_HIT)
-  let meter = start
+  const back = Number.isFinite(ride.pull) ? ride.pull : PULL_DIST
+  let meter
   let speed = 0
-  let air
+  let air = LAUNCH_AIR
   out.airborne = false
   out.crashed = false
   out.bounces = 0
+  out.grip = -1
+  out.strain = 0
+  out.fly = 0
+  out.sprawl = 0
+  out.cheer = 0
+  out.roll = 0
   if (elapsed < KICK_HIT) {
+    // The snap: hanging on a beat at full stretch, then slung forward - faster and
+    // faster - diving flat as you go, the arms snapping short until you pass the posts.
     out.phase = 'launch'
-    out.launch = clamp01(elapsed / KICK_HIT)
-    air = LAUNCH_AIR
+    const u = clamp01(elapsed / KICK_HIT)
+    out.launch = u
+    const k = clamp01((u - SNAP_HOLD) / (1 - SNAP_HOLD))
+    const from = ride.fromMeter - back
+    meter = from + (start - from) * k * k
+    speed = (2 * k * (start - from)) / ((1 - SNAP_HOLD) * KICK_HIT)
+    out.pitch = (Math.PI / 2) * smooth(0.3, 1, k)
+    const ahead = ride.fromMeter + GRIP.ahead - meter
+    if (ahead > 0.35) {
+      out.grip = ahead
+      out.strain = (1 - k) * Math.min(1, back / PULL_DIST)
+    } else {
+      out.fly = 1
+    }
   } else {
     const t = (elapsed - KICK_HIT) / flightTime
     out.launch = 1
@@ -181,37 +217,49 @@ export function rideState(elapsed, ride, lane, out) {
     if (t < LAND_T) {
       const f = progress(t / LAND_T)
       meter = start + (end - start) * f
-      speed = ((end - start) * (1.5 - (t / LAND_T))) / (LAND_T * flightTime)
+      speed = ((end - start) * (1.5 - t / LAND_T)) / (LAND_T * flightTime)
       air = LAUNCH_AIR * (1 - f) + peak * 4 * f * (1 - f)
       out.airborne = true
+      // Nose up as you leave the posts, level at the top, nose down coming in to land.
+      out.pitch = Math.PI / 2 - 0.3 + 0.55 * f
+      out.fly = 1
+      // A PERFECT launch barrel-rolls once on the way up; the rest just sway.
+      out.roll = ride.hit === 'perfect' ? Math.PI * 2 * smooth(0.12, 0.5, f) : Math.sin(f * 9) * 0.14
     } else {
-      // Down on the turf: BOUNCES hops, each lower, then it settles in the grass.
+      // Down on the turf: belly bounces, each lower, then lying there a moment.
       meter = end
-      const u = (t - LAND_T) / (1 - LAND_T) / SETTLE
-      if (u < 1) {
-        air = peak * 0.09 * (1 - u) * Math.abs(Math.sin(Math.PI * BOUNCES * u))
-        out.bounces = 1 + Math.min(BOUNCES - 1, Math.floor(u * BOUNCES))
-      } else {
-        air = -SUNK * clamp01((u - 1) * 4)
-        out.bounces = BOUNCES
-      }
+      const v = (t - LAND_T) / (1 - LAND_T) / SETTLE
+      air = v < 1 ? peak * 0.06 * (1 - v) * Math.abs(Math.sin(Math.PI * BOUNCES * v)) : 0
+      out.bounces = v < 1 ? 1 + Math.min(BOUNCES - 1, Math.floor(v * BOUNCES)) : BOUNCES
+      out.pitch = Math.PI / 2
+      out.sprawl = 1
+    }
+    if (t >= 1) {
+      // Up on your feet to celebrate.
+      const stand = smooth(0, STAND_UP, elapsed - ride.duration)
+      out.pitch = (Math.PI / 2) * (1 - stand)
+      air = LAUNCH_AIR * stand
+      out.sprawl = 1 - stand
+      out.cheer = stand
     }
   }
-  // Ease from where it was hit onto its own line down the lane.
+  // Ease from where you launched onto your own line down the runway.
   const settle = clamp01((meter - start) / 40)
   const x = ride.startX * (1 - settle) + lane * settle
   out.meter = meter
   out.speed = speed
   out.air = air
-  out.lean = 0
-  out.topple = 0
-  out.yaw = 0
-  // Tumbling end over end as it goes (a football's long axis runs along the kick).
-  out.spin = -(meter - start) / TIRE_SIZE
   out.x = x
-  out.size = swellSize((meter - start) / 5)
-  trackPoint(meter, x, out.size + air, out.position)
+  out.size = TIRE_SIZE
+  trackPoint(meter, x, BODY_FLAT + air, out.position)
   return out
+}
+
+/** Each other player flies down their own line of the runway, so fliers don't overlap. */
+export function laneFor(sid) {
+  let h = 2166136261
+  for (let i = 0; i < sid.length; i += 1) h = Math.imul(h ^ sid.charCodeAt(i), 16777619)
+  return (((h >>> 0) % 5) - 2) * 3
 }
 
 const _ax = new Vector3(1, 0, 0)
@@ -219,12 +267,14 @@ const _ay = new Vector3(0, 1, 0)
 const _az = new Vector3(0, 0, 1)
 const _qa = new Quaternion()
 const _qb = new Quaternion()
-const _qc = new Quaternion()
 
-/** The ball's turn for ride state `st`: its tumble about its sideways axis. */
-export function rideTurn(st, out) {
-  // Turn about the vertical (Y), lean about the direction of travel (Z), then the spin
-  // about X.
-  _qc.setFromAxisAngle(_ay, st.yaw || 0)
-  return out.multiplyQuaternions(_qc, _qa.setFromAxisAngle(_az, st.lean)).multiply(_qb.setFromAxisAngle(_ax, st.spin))
+/**
+ * The body's turn for ride state `st`, facing down the runway (-Z): turned about the
+ * vertical to face it, barrel-rolled about the way it's going, then dived forward
+ * about its middle. Applied to an avatar that faces +Z.
+ */
+export function flierTurn(st, out) {
+  out.setFromAxisAngle(_ay, Math.PI)
+  out.multiply(_qa.setFromAxisAngle(_az, st.roll))
+  return out.multiply(_qb.setFromAxisAngle(_ax, st.pitch))
 }
