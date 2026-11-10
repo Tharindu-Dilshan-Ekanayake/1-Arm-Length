@@ -100,7 +100,7 @@ const RUNWAY = RAINBOW.map((hex) => [new Color(hex).lerp(new Color('#ffffff'), 0
 const runwayAt = (meter, k) => RUNWAY[zoneIndexAt(meter) % RUNWAY.length][k % 2]
 
 /** World 1's valley: grass beside the runway and under the hills, and the hills' dirt. */
-const VALLEY = { grass: ['#45c43c', '#3db535'], ground: '#3aa834', dirt: ['#b98552', '#a8743f'], leaves: ['#3fbf3a', '#ff9fd6'], trunk: '#8a5a32' }
+const VALLEY = { grass: ['#45c43c', '#3db535'], ground: '#3aa834', dirt: ['#ff8aa8', '#c08cff'], leaves: ['#ff6fae', '#ffd21f'], trunk: '#ffffff' }
 /** Each stage's sky, parsed once per world. */
 const stageSkies = perWorld((zs) => zs.map((z) => skyLook(ZONE_THEMES[z.theme]?.sky ?? ZONE_THEMES.grassy.sky)))
 /** A stable pseudo-random 0-1 for piece `k` (and a salt): the same on every client. */
@@ -545,8 +545,8 @@ function placeHill(mesh, styles, k, sparse) {
   const tx = x - side * (w / 2 - 3)
   const parts = [
     // [x, y centre, z, width, height, depth, colour, style]
-    [x, h / 2, 0, w, h, d, VALLEY.dirt[k % 2], STYLE.HILL],
-    [x + back, h + h * 0.4, 0, w * 0.6, h * 0.8, d * 0.75, VALLEY.dirt[(k + 1) % 2], STYLE.HILL],
+    [x, h / 2, 0, w, h, d, VALLEY.dirt[k % 2], STYLE.MESA],
+    [x + back, h + h * 0.4, 0, w * 0.6, h * 0.8, d * 0.75, VALLEY.dirt[(k + 1) % 2], STYLE.MESA],
     [tx, h + 1.4, 0, 0.9, 2.8, 0.9, VALLEY.trunk, STYLE.SMOOTH],
     [tx, h + 3.9, 0, 3.6, 2.4, 3.6, VALLEY.leaves[pink ? 1 : 0], STYLE.STUDS],
   ]

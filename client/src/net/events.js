@@ -95,7 +95,8 @@ export function handleServerEvent(type, payload) {
       break
 
     case 'badge':
-      sfx.wins()
+      // (After the moment it was earned in - usually a launch - so that frame stays light.)
+      setTimeout(() => sfx.wins(), 1200)
       break
 
     case 'star': {

@@ -1,8 +1,8 @@
 import { Vector3 } from 'three'
 
-import { comboBonus, HIT_GRADES } from '@shared/balance'
+import { comboBonus, HIT_GRADES, STRETCH_REACH } from '@shared/balance'
 import { formatNumber } from '@shared/format'
-import { LAUNCH_STAND, ROLL_RETURN } from '@shared/world'
+import { LAUNCH_STAND, MAX_PULL, ROLL_RETURN } from '@shared/world'
 
 import { sfx } from '../../audio/sfx'
 import { getGame } from '../../store/game'
@@ -57,6 +57,8 @@ export const roll = {
   pull: 0,
   /** PERFECTs in a row with this launch (0: not a PERFECT), and its lucky gift or null. */
   combo: 0,
+  /** Metres of the stretch lane the server paid this launch for (STRETCH_REACH). */
+  stretch: 0,
   gift: null,
   /** performance.now() of the last landing, take-off and wall hit, for dust, shake and sound. */
   landedAt: 0,
@@ -164,9 +166,10 @@ export function advanceRoll(clockTime) {
  * (0-1). The rest - the title - follows the grade too.
  */
 const HIT_FX = {
-  perfect: { fire: 'perfect', palette: 'gold', count: 60, speed: 12, freezeMs: 650, power: 1 },
-  great: { fire: 'great', palette: 'power', count: 34, speed: 9, freezeMs: 320, power: 0.65 },
-  good: { fire: 'good', palette: 'confetti', count: 16, speed: 6, freezeMs: 140, power: 0.35 },
+  // No freeze (freezeMs 0): time standing still at launch read as the game sticking.
+  perfect: { fire: 'perfect', palette: 'gold', count: 60, speed: 12, freezeMs: 0, power: 1 },
+  great: { fire: 'great', palette: 'power', count: 34, speed: 9, freezeMs: 0, power: 0.65 },
+  good: { fire: 'good', palette: 'confetti', count: 16, speed: 6, freezeMs: 0, power: 0.35 },
   weak: { fire: null, palette: null, count: 0, speed: 0, freezeMs: 0, power: 0 },
 }
 
@@ -184,6 +187,11 @@ function blastOff(now) {
   const fx = HIT_FX[grade.id]
   const p = roll.position
   if (fx.count) burst({ x: p.x, y: p.y, z: p.z, count: fx.count, palette: fx.palette, speed: fx.speed })
+  // The stretch: metres walked back, and how much further that flings you.
+  if (roll.stretch >= 1) {
+    const extra = Math.round((STRETCH_REACH * roll.stretch * 100) / MAX_PULL)
+    spawnScattered(`${Math.round(roll.stretch)}m STRETCH! +${extra}% FLY`, { scale: 1.1 + Math.min(0.5, roll.stretch / 60) })
+  }
   // PERFECTs in a row: the combo and the Wins it adds.
   if (grade.id === 'perfect' && roll.combo >= 2) {
     timers.push(setTimeout(() => spawnScattered(`PERFECT COMBO x${roll.combo}! +${Math.round((comboBonus(roll.combo) - 1) * 100)}% WINS`, { scale: 1.25 }), 450))
@@ -237,6 +245,7 @@ export function beginRoll(result) {
     startX: LAUNCH_STAND.x,
     pull: stretched || back > 0.2 ? back : PULL_DIST,
     combo: result.combo || 0,
+    stretch: result.stretch || 0,
     gift: result.gift || null,
     landedAt: 0,
     tookOffAt: 0,
@@ -255,7 +264,10 @@ export function beginRoll(result) {
   // Square up to the runway.
   runtime.player.yaw = Math.PI
   runtime.camera.mode = 'roll'
-  game.startRoll({
+  // The HUD's switch to the flight (a React update and a restyle) in a task of its own,
+  // not the frame the launch starts in: together they made that one frame stick on slow
+  // phones. The flight itself is already under way from the runtime state above.
+  const started = {
     distance: result.distance,
     wins: result.wins,
     prize: result.prize || 0,
@@ -263,7 +275,8 @@ export function beginRoll(result) {
     duration: result.duration,
     best: result.best,
     giftWins: result.gift?.wins || 0,
-  })
+  }
+  timers.push(setTimeout(() => game.startRoll(started), 0))
 
   // The rubber letting go with a twang, then the whoosh past the posts.
   sfx.rubberSnap(Math.min(1, roll.pull / PULL_DIST))

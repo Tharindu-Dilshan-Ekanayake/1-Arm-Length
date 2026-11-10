@@ -30,8 +30,12 @@ const GRAVITY = 32
 const JUMP_SPEED = 10.5
 /** Ledges up to this high are walked straight onto (the showroom's back stage). */
 const STEP_UP = 1.05
-/** Walking back holding the launch posts, straining against the rubber: this fast at most (m/s). */
-const PULL_WALK = 6
+/**
+ * Walking back holding the launch posts, straining against the rubber: this fast at most
+ * (m/s) - quicker with longer arms, so even the full 40 m lane takes only a few seconds
+ * (always well under the server's MAX_MOVE_SPEED).
+ */
+const pullWalk = (maxPull) => Math.min(12, Math.max(5, maxPull / 3.6))
 /** Reaching the stand spot this close to the posts grabs them by itself. */
 const AUTO_GRAB = 0.9
 /** Walked back at least this far, stopping pulling back lets go (a launch). */
@@ -194,7 +198,8 @@ export function Player({ onAvatarReady }) {
       // Holding the posts: only straight back (south, +Z) and in again, at a strained
       // walk, no further than the arms reach. Auto Launch walks you back by itself.
       const pullingBack = launch.auto || _move.z > WALK_SPEED * 0.15
-      const back = launch.auto ? PULL_WALK : (_move.z / WALK_SPEED) * PULL_WALK
+      const walk = pullWalk(maxPull)
+      const back = launch.auto ? walk : (_move.z / WALK_SPEED) * walk
       _move.set(0, 0, launch.released ? 0 : back)
       // Walked back far enough, then stopped pulling: that's the let-go. Fired from here
       // (not a button): the meter as it stood is what the launch is graded on.

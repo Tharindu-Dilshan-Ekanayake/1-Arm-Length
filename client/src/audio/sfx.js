@@ -1,5 +1,6 @@
 import { RUN_CADENCE } from '../game/kick'
 
+import { useQuality } from '../store/quality'
 import { createCrowd } from './crowd'
 import { createMusic } from './music'
 
@@ -78,6 +79,13 @@ export function prepareAudio() {
   crowd = createCrowd(ctx, master, noiseBuffer)
 }
 
+/**
+ * Low-end devices (the LOW preset) get no crowd: its cheers and claps are dozens of audio
+ * nodes at a time, built on the main thread - on a slow phone, frames lost mid-flight.
+ */
+const lite = () => useQuality.getState().level === 'LOW'
+const liveCrowd = () => (lite() ? null : crowd)
+
 let musicStarted = false
 function unlock() {
   // Built already while loading, normally; on the spot if a tap beat it to it.
@@ -86,7 +94,7 @@ function unlock() {
   if (!musicStarted) {
     musicStarted = true
     music.start()
-    crowd.start()
+    liveCrowd()?.start()
   }
   if (adMuted) ctx.suspend()
   else if (ctx.state === 'suspended') ctx.resume()
@@ -216,7 +224,7 @@ function windStart() {
   hum.start(t)
   ride = { src, air, body, tumble, depth, hum, humGain }
   music?.duck(true)
-  crowd?.anticipate(true)
+  liveCrowd()?.anticipate(true)
 }
 
 /**
@@ -253,7 +261,7 @@ function windStop() {
   tumble.stop(t + 1)
   hum.stop(t + 1)
   music?.duck(false)
-  crowd?.anticipate(false)
+  liveCrowd()?.anticipate(false)
 }
 
 // --- The pull-up bar: a springy boing every rep ----------------------------------------
@@ -355,9 +363,31 @@ function ready(name, minGapMs = 0) {
   return true
 }
 
+/**
+ * Runs `build(t)` for a sound due `at` seconds from now: straight away when it's due
+ * soon, otherwise just before it's due (`t` still lands it on time). So a chord, a run of
+ * bells or a round of applause doesn't create dozens of audio nodes in the one frame that
+ * asked for it - on a slow phone that frame stuck.
+ */
+export function whenDue(at, build) {
+  const due = ctx.currentTime + at
+  if (at <= LEAD) {
+    build(due)
+    return
+  }
+  setTimeout(() => {
+    if (ctx) build(Math.max(ctx.currentTime, due))
+  }, (at - LEAD) * 1000)
+}
+/** How early (s) a deferred sound is built before it's due. */
+const LEAD = 0.06
+
 /** A short enveloped oscillator note; `echo` also sends it into the echo. */
-function tone(freq, { type = 'sine', at = 0, duration = 0.12, volume = 0.3, slideTo = null, attack = 0.01, echo: wet = false } = {}) {
-  const t = ctx.currentTime + at
+function tone(freq, opts = {}) {
+  whenDue(opts.at ?? 0, (t) => toneAt(freq, t, opts))
+}
+
+function toneAt(freq, t, { type = 'sine', duration = 0.12, volume = 0.3, slideTo = null, attack = 0.01, echo: wet = false } = {}) {
   const osc = ctx.createOscillator()
   const gain = ctx.createGain()
   osc.type = type
@@ -387,8 +417,11 @@ let trophyRun = 0
 let trophyAt = 0
 
 /** Filtered noise: whooshes and cracks. */
-function noise({ at = 0, duration = 0.3, volume = 0.25, from = 400, to = 2400, q = 1.2 } = {}) {
-  const t = ctx.currentTime + at
+function noise(opts = {}) {
+  whenDue(opts.at ?? 0, (t) => noiseAt(t, opts))
+}
+
+function noiseAt(t, { duration = 0.3, volume = 0.25, from = 400, to = 2400, q = 1.2 } = {}) {
   const src = ctx.createBufferSource()
   src.buffer = noiseBuffer
   const filter = ctx.createBiquadFilter()
@@ -473,7 +506,7 @@ export const sfx = {
    */
   groundSmash(power = 1) {
     if (!ready('groundSmash', 400)) return
-    crowd?.roar(0.5 + 0.5 * power)
+    liveCrowd()?.roar(0.5 + 0.5 * power)
     const p = 0.6 + 0.4 * power
     tone(95, { duration: 0.6, volume: 0.32 * p, slideTo: 32 })
     tone(190, { type: 'triangle', duration: 0.14, volume: 0.1 * p, slideTo: 95 })
@@ -579,7 +612,7 @@ export const sfx = {
   /** A new stage reached mid-roll: a quick, cheerful rising jingle. */
   stageUp() {
     if (!ready('stageUp', 300)) return
-    crowd?.whoo(2)
+    liveCrowd()?.whoo(2)
     ;[659, 784, 988, 1319].forEach((f, i) => tone(f, { type: 'triangle', at: i * 0.06, duration: 0.16, volume: 0.08, echo: true }))
     for (let i = 0; i < 3; i += 1) bell(1760 + Math.random() * 900, { at: 0.24 + i * 0.05, volume: 0.03, decay: 0.18 })
   },
@@ -606,12 +639,15 @@ export const sfx = {
     trophyAt = now
     const n = TROPHY_SCALE.length
     const k = trophyRun % (2 * n - 2)
-    bell(TROPHY_SCALE[k < n ? k : 2 * n - 2 - k], { volume: 0.085, decay: 0.32 })
+    const f = TROPHY_SCALE[k < n ? k : 2 * n - 2 - k]
+    // LOW: one note, not a three-voice bell (they come many a second).
+    if (lite()) tone(f, { duration: 0.22, volume: 0.085 })
+    else bell(f, { volume: 0.085, decay: 0.32 })
   },
   /** Wins paid out (a roll's total, a badge): a fanfare, a shimmering chord and a shower of coins. */
   wins() {
     if (!ready('wins')) return
-    crowd?.applause()
+    liveCrowd()?.applause()
     ;[784, 988, 1175, 1568].forEach((f, i) => tone(f, { type: 'triangle', at: i * 0.07, duration: 0.2, volume: 0.1, echo: true }))
     // G major, held, each voice doubled a hair apart so it shimmers.
     for (const f of [784, 988, 1175]) {
@@ -640,7 +676,7 @@ export const sfx = {
   rebirth() {
     if (!ready('rebirth')) return
     sfx.whistle(true)
-    crowd?.roar(1)
+    liveCrowd()?.roar(1)
     noise({ duration: 0.5, volume: 0.07, from: 200, to: 1800, q: 0.6 })
     ;[262, 330, 392, 523, 659, 784].forEach((f, i) => tone(f, { type: 'sawtooth', at: 0.1 + i * 0.07, duration: 0.25, volume: 0.06 }))
   },

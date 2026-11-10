@@ -45,6 +45,11 @@ export const STYLE = {
    * below in 4 m checker cubes of two shades - one tall box reads as a stack of blocks.
    */
   HILL: 14,
+  /**
+   * Candy mesa: the instance colour in wavy horizontal strata of lighter and darker
+   * bands, under a cream frosting cap that drips a wavy way down the sides.
+   */
+  MESA: 15,
 }
 
 /** Shared clock for animated styles; WorldClock advances it once per frame. */
@@ -205,7 +210,7 @@ const fragmentBody = /* glsl */ `
       float check = mod(floor(vToyPos.x / 3.0) + floor(vToyPos.z / 3.0), 2.0);
       col *= mix(1.0, mix(0.86, 1.04, check), 1.0 - smoothstep(0.4, 1.2, max(cw.x, cw.y)));
       col *= toyTile(sp);
-    } else {
+    } else if (style < 15.0) {
       // Hill: grass on top and a lip down the sides, checkered dirt cubes below.
       bool lip = (vToyTop - vToyPos.y) < 0.6;
       if (isTop || lip) {
@@ -213,6 +218,16 @@ const fragmentBody = /* glsl */ `
       } else {
         float cube = mod(floor(vToyPos.x / 4.0 + 0.001) + floor(vToyPos.y / 4.0 + 0.001) + floor(vToyPos.z / 4.0 + 0.001), 2.0);
         col *= mix(0.82, 1.05, cube);
+      }
+      col *= toyTile(sp);
+    } else {
+      // Mesa: frosting on top dripping down the sides in waves, candy strata below.
+      float drip = 0.55 + 0.4 * sin(vToyPos.x * 1.9 + vToyPos.z * 1.3) + 0.3 * sin((vToyPos.x - vToyPos.z) * 0.7);
+      if (isTop || (vToyTop - vToyPos.y) < drip) {
+        col = mix(col, vec3(1.0, 0.97, 0.93), 0.78) * (isTop ? 1.0 : 0.94);
+      } else {
+        float band = floor((vToyPos.y + 0.7 * sin(vToyPos.x * 0.13 + vToyPos.z * 0.09)) / 1.7);
+        col *= 0.8 + 0.3 * fract(sin(band * 12.9898) * 43758.5453);
       }
       col *= toyTile(sp);
     }

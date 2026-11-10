@@ -84,8 +84,8 @@ export function World() {
     performance.mark('pp:world-start')
     const { decorDensity, maxTexture } = useQuality.getState().settings
     const set = new BlockSet()
-    // Blocky hills all round the valley (both worlds), the scoreboard on the south hilltop.
-    buildHills(set, { density: decorDensity })
+    // Candy mesas all round the canyon (sandstone at Palm Beach), the scoreboard on the south one.
+    buildHills(set, { density: decorDensity, venue: venueOf(world) })
     addScoreboard(set, venueOf(world))
     const propBuilder = new PropBuilder()
     buildPads(set, propBuilder)

@@ -698,3 +698,26 @@ export const BADGES = {
   world2: { name: 'Beach Bum' },
   secretStar: { name: 'Star Finder' },
 }
+
+// --- Rubber arms: how far they stretch ---------------------------------------------
+
+const ARM_INDEX = new Map(TIRES.map((t, i) => [t.id, i]))
+
+/**
+ * How grown arms `tireId` are at `level` (0-1): a little from levelling up, mostly from
+ * better arms - short at first, until, well upgraded, they hang to the floor and stretch
+ * for tens of metres. `cap` is your level cap, so a rebirth's higher cap doesn't shrink them.
+ */
+export function armGrowth(tireId, level = 1, cap = 15) {
+  const upgrade = (ARM_INDEX.get(tireId) ?? 0) / (TIRES.length - 1)
+  const lvl = Math.min(1, Math.max(0, (level - 1) / Math.max(1, cap - 1)))
+  return 0.08 + 0.92 * Math.min(1, upgrade * 0.7 + lvl * 0.3)
+}
+
+/**
+ * The stretch bonus: every metre you walk back holding the launch posts (out of the most
+ * anyone can, world MAX_PULL) flings you further and pays more - up to STRETCH_REACH more
+ * distance and STRETCH_WINS more Wins at the full 50 m. Longer arms, further flights.
+ */
+export const STRETCH_REACH = 0.5
+export const STRETCH_WINS = 0.5

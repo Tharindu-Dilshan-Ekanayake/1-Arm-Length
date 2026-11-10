@@ -44,7 +44,7 @@ import {
   usePortal,
 } from '../../shared/logic.js'
 import { PlayerSession } from '../../shared/session.js'
-import { PAD_X, padCenterZ, PORTALS, ROLL_ZONE, SPAWN, STAR } from '../../shared/world.js'
+import { LAUNCH_STAND, MAX_PULL, maxPullFor, PAD_X, padCenterZ, PORTALS, ROLL_ZONE, SPAWN, STAR } from '../../shared/world.js'
 
 const onPad = (i) => ({ x: PAD_X, y: 0.5, z: padCenterZ(i) })
 const inRollZone = () => ({ x: 0, y: 0, z: (ROLL_ZONE.minZ + ROLL_ZONE.maxZ) / 2 })
@@ -529,4 +529,32 @@ test("Palm Beach's Secret Star: found once, there only, for x2 Power everywhere"
   far.profile.world = 1
   far.session.handle('findStar', {}, 0)
   assert.equal(far.count('star'), 0)
+})
+
+// --- The stretch lane ------------------------------------------------------------
+
+test('walking further back down the stretch lane flings you further and pays more, up to your arms reach', () => {
+  const launchFrom = (back, tire) => {
+    const profile = createProfile('a', 'A')
+    profile.health = 5000
+    if (tire) {
+      profile.ownedTires.push(tire)
+      profile.equippedTire = tire
+    }
+    const { session, events } = makeSession({ x: LAUNCH_STAND.x, y: 0, z: LAUNCH_STAND.z + back }, profile)
+    session.handle('roll', { accuracy: 0.5 }, 1000)
+    return events.find((e) => e.type === 'roll').payload
+  }
+  const stood = launchFrom(0)
+  const short = launchFrom(3)
+  assert.equal(stood.stretch, 0)
+  assert.ok(short.distance > stood.distance && short.wins >= stood.wins)
+  // Starter arms only reach a few metres: walking the whole lane counts no further.
+  const cheat = launchFrom(MAX_PULL)
+  assert.ok(cheat.stretch <= maxPullFor('bicycle', 1, 15) + 0.6) // (+0.5 lag slack, rounded)
+  // The best arms reach (nearly) the whole 40 m - and fly much further for it.
+  const best = TIRES[TIRES.length - 1].id
+  const far = launchFrom(MAX_PULL, best)
+  assert.ok(far.stretch > cheat.stretch * 3)
+  assert.ok(far.distance > stood.distance * 1.3)
 })

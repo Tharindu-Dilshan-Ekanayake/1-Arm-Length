@@ -1,4 +1,4 @@
-# Ships Rubber Arm Launch to Bloxity Legion: the dev branch to the dev channel, main to prod.
+# Ships +1 Arm Length to Bloxity Legion: the dev branch to the dev channel, main to prod.
 #
 #   server   -> Docker image in this repo's GitHub Container Registry, then Legion rolls
 #               it out (https://1-arm-length.host.bloxity.io / .dev.host.bloxity.io)
@@ -33,8 +33,9 @@ on:
 
 env:
   GAME_ID: 1-arm-length
-  # Players per room (the Colyseus room's maxClients); a full pod makes Legion start another.
-  ROOM_SIZE: 8
+  # Seats per pod: the Colyseus room's maxClients (GameRoom.js MAX_CLIENTS). When a pod
+  # fills to it, Legion's matchmaker starts another.
+  SEAT_CAP: 8
 
 concurrency:
   group: deploy-${{ github.ref_name }}
@@ -117,7 +118,7 @@ jobs:
           curl -sS --fail-with-body -X POST "$LEGION_API/v1/apps/$GAME_ID/deploy" \
             -H "Authorization: Bearer $DEPLOY_TOKEN" \
             -H 'Content-Type: application/json' \
-            -d "{\"channel\":\"$CHANNEL\",\"image\":\"${{ steps.meta.outputs.image }}\",\"version\":\"$GITHUB_SHA\",\"roomSize\":$ROOM_SIZE}"
+            -d "{\"channel\":\"$CHANNEL\",\"image\":\"${{ steps.meta.outputs.image }}\",\"version\":\"$GITHUB_SHA\",\"seatCap\":$SEAT_CAP}"
 
       - uses: actions/setup-node@v4
         with:

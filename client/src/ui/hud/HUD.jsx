@@ -51,8 +51,10 @@ export function HUD() {
         <TopBar />
         <StatsPanel />
         {/* Hidden, not unmounted, while rolling: remounting them at the moment of the
-            push-off cost a visible hitch on slow phones. */}
-        <div className="contents" style={{ visibility: rolling ? 'hidden' : 'visible' }}>
+            push-off cost a visible hitch on slow phones. display: none (not visibility)
+            takes them out of style and layout altogether, so the counters changing every
+            frame of a flight don't re-lay them out each time. */}
+        <div style={{ display: rolling ? 'none' : 'contents' }}>
           <LeftMenu />
           <PassButtons />
           <TopCenter />

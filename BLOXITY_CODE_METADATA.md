@@ -3,7 +3,7 @@ canDie: false
 hasScore: true
 ---
 
-# Rubber Arm Launch: Boxity integration
+# +1 Arm Length: Boxity integration
 
 The player cannot die: there is no death or game-over screen. You do rubber-arm pull-ups
 for Power, grab the two launch posts on the Launch Pad, walk back with your own controls

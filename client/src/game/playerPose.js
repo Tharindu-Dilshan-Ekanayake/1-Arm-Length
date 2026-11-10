@@ -82,7 +82,8 @@ function aimArms(out, up, fwd, parentSwing, w) {
   const swing = Math.atan2(-fwd, -up) - parentSwing
   add('ArmL1', swing, sway * OUT_L, 0, w)
   add('ArmR1', swing, sway * OUT_R, 0, w)
-  const extra = (len / BODY.arm - 1) * w
+  // The rubber hand reaches on past the arm's end: its palm, not its wrist, on the target.
+  const extra = (Math.max(0.05, len - HAND_REACH) / BODY.arm - 1) * w
   pose.stretchL += extra
   pose.stretchR += extra
 }
@@ -124,7 +125,9 @@ const ARM_C = 6.5
 /** Physics steps at most this long, so a slow frame can't blow the springs up. */
 const ARM_STEP = 1 / 60
 /** Knuckles rest this high: on the floor. */
-const KNUCKLES = 0.07
+const KNUCKLES = 0.1
+/** How far past the end of the arm a rubber hand grips (its palm). */
+const HAND_REACH = 0.2
 /** Arms fling up and out to this length in the air (times their own). */
 const AIR_REACH = 1.7
 
@@ -147,7 +150,8 @@ function rubberArms(motion, ratio, phase, grounded, w) {
   st.t = time
   // Back from another pose (or a long pause): pick up from where the arms want to be.
   if (dt <= 0 || dt > 0.25) dt = 0
-  const drag = 0.12 + 0.7 * ratio
+  // Longer arms trail further behind.
+  const drag = 0.12 + 0.7 * ratio + 0.25 * grow
   const swing = Math.sin(phase) * 0.3 * ratio
   const tl = grounded ? drag + swing : -0.5
   const tr = grounded ? drag - swing : -0.5
@@ -171,8 +175,8 @@ function rubberArms(motion, ratio, phase, grounded, w) {
   const reach = (a) => {
     const down = Math.max(0.2, Math.cos(a) * Math.cos(st.out))
     const onFloor = (shoulder - KNUCKLES) / down / BODY.arm
-    // Grown arms: from a little longer than normal up to reaching the floor.
-    const hanging = 1.12 + (Math.min(3.4, onFloor) - 1.12) * grow
+    // Always down to the floor: the hands drag along it.
+    const hanging = Math.max(1, Math.min(3.4, onFloor))
     return st.contact * hanging + (1 - st.contact) * (1.2 + (AIR_REACH - 1.2) * grow)
   }
   add('ArmL1', st.l, st.out * OUT_L, 0, w)

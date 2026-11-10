@@ -1,6 +1,6 @@
 import { useCallback, useEffect, useRef, useState } from 'react'
 
-import { HIT_GRADES, hitGrade, hitReach, TUTORIAL } from '@shared/balance'
+import { HIT_GRADES, hitGrade, hitReach } from '@shared/balance'
 
 import { sfx } from '../../audio/sfx'
 import { cancelPull, grab, launch, letGo } from '../../game/launch'
@@ -30,7 +30,7 @@ const GRADE_COLORS = { perfect: '#ffd21f', great: '#7dff4a', good: '#9fe8ff', we
 
 /**
  * The launch posts' HUD: the stretch meter and the LAUNCH! button, shown by the posts.
- * Walk up to the posts and you grab them by themselves (or press the button, or E /
+ * Walk up to the posts and you grab them by themselves (or press E /
  * Enter); then walk BACK with your joystick or keys - your arms stretch like rubber and
  * the stretch meter fills with how far back you've got (out of how far your arms reach).
  * At full stretch the rubber twangs and the meter bounces off the top. Stop pulling back
@@ -46,8 +46,6 @@ export function RollButton() {
   const near = useGame((s) => s.zone.atPosts && !s.roll && !s.rollResult && !s.panel)
   const ownsAuto = useGame((s) => Boolean(s.profile.passes.autoRoll))
   const autoOn = useGame((s) => Boolean(s.profile.passes.autoRoll && s.profile.settings.autoRoll))
-  // The bouncing arrow over it is for the tutorial's launch step only.
-  const pointAt = useGame((s) => TUTORIAL[s.profile.tutorialStep]?.event === 'roll')
   /** Holding the posts right now (mirrors launch.gripping for React). */
   const [gripping, setGripping] = useState(false)
   const [auto, setAuto] = useState(false)
@@ -149,7 +147,7 @@ export function RollButton() {
       // The grade letting go now would get, in its colour, and how far it would fling
       // you: "LET GO! PERFECT x1.5". Both layers of the outlined text (StrokeText).
       const grade = hitGrade(charge)
-      const text = launch.full ? `RELEASE! ${grade.label.replace(/[!.]+$/, '')} x${hitReach(charge).toFixed(1)}` : `WALK BACK! ${Math.round(charge * 100)}%`
+      const text = launch.full ? `RELEASE! ${grade.label.replace(/[!.]+$/, '')} x${hitReach(charge).toFixed(1)}` : `WALK BACK! ${Math.round(launch.back)}m / ${Math.round(launch.max)}m`
       for (const layer of labelRef.current?.querySelectorAll('.pp-text-stroke, .pp-text-fill') ?? []) layer.textContent = text
       const fill = labelRef.current?.querySelector('.pp-text-fill')
       if (fill) fill.style.color = launch.full ? GRADE_COLORS[grade.id] : '#ffffff'
@@ -161,7 +159,6 @@ export function RollButton() {
   }, [gripping, auto, doLetGo])
 
   if (!visible) return null
-  const label = gripping ? 'LET GO!' : 'LAUNCH!'
   return (
     <>
       {/* The stretch meter, up under the top bar: the middle of the screen is you,
@@ -207,24 +204,10 @@ export function RollButton() {
         </div>
       )}
       <div className="pointer-events-none absolute left-1/2 flex -translate-x-1/2 flex-col items-center" style={{ bottom: u(300) }}>
-        {pointAt && !gripping && <Icon name="arrowDown" size={u(80)} className="pp-bounce" style={{ marginBottom: u(8) }} />}
-        <ChunkyButton
-          gradient={gripping ? GRADIENTS.goldButton : GRADIENTS.greenButton}
-          onPointerDown={press}
-          title={label}
-          radius={12}
-          border={6}
-          className="pp-roll-btn"
-          style={{ width: u(380), height: u(104), gap: u(10), touchAction: 'none' }}
-        >
-          <Icon name="tire" size={u(84)} />
-          <span style={{ fontSize: u(70) }}>
-            <StrokeText stroke={u(14)}>{label}</StrokeText>
-          </span>
-        </ChunkyButton>
+        {/* No button: walking up to the posts grabs them, letting go of the stick launches. */}
         {!gripping && (
-          <span style={{ fontSize: u(28), marginTop: u(8) }}>
-            <StrokeText stroke={u(6)}>Or just walk up to the posts, pull back, release!</StrokeText>
+          <span style={{ fontSize: u(34) }}>
+            <StrokeText stroke={u(7)}>Walk up to the posts, pull BACK, then release!</StrokeText>
           </span>
         )}
         {ownsAuto && (

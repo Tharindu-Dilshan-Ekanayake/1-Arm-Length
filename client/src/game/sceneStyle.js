@@ -1,8 +1,8 @@
 /**
- * The scene's whole look in one place: a sunny day in a blocky green valley - a bright
- * blue sky fading to pale blue at the horizon with plenty of cloud, a high white sun, a
- * turf park for a plaza, and grass-topped hills of checkered dirt all round it (hills.js)
- * with the launch runway running off between them.
+ * The scene's whole look in one place: the Candy Canyon - a cotton-candy sky, periwinkle
+ * overhead melting to a pink haze at the horizon, puffy cloud and a warm sun, a mint
+ * plaza with a hot-pink path, and frosted candy mesas in pastel strata all round it
+ * (hills.js), the launch runway running off between them.
  *
  * Colours are sRGB hex, exactly as you would pick them in an image editor.
  *
@@ -11,6 +11,9 @@
  * low sun add up to just over that on the ground, which keeps the turf vivid; shadowed
  * ground only gets the cool fill, so shadows read blue and the lit side gold.
  */
+
+/** Style id of the candy mesas (materials STYLE.MESA; a number here so this file stays import-free). */
+const STYLE_MESA = 15
 
 /** The home team's colours: everything built for the venue uses these. */
 export const TEAM = {
@@ -21,17 +24,17 @@ export const TEAM = {
 }
 
 export const SKY = {
-  /** Straight up: bright sky blue. */
-  top: '#2f80ea',
-  /** At eye level: pale blue. Fog uses the same colour so distant ground melts into the sky. */
-  horizon: '#c6e6ff',
-  /** Lower = the deep blue reaches further down towards the horizon. */
-  exponent: 0.55,
+  /** Straight up: periwinkle. */
+  top: '#5b6dff',
+  /** At eye level: pink haze. Fog uses the same colour so distant ground melts into the sky. */
+  horizon: '#ffd2ea',
+  /** Lower = the deep colour reaches further down towards the horizon. */
+  exponent: 0.6,
   /** The sun's glow round its direction, and how strong it is. */
-  sun: '#ffffff',
-  glow: 0.35,
+  sun: '#fff0c8',
+  glow: 0.6,
   /** High clouds (0 none, 1 plenty), and stars (night stages only). */
-  clouds: 0.85,
+  clouds: 0.9,
   stars: 0,
 }
 
@@ -88,7 +91,9 @@ export const VENUES = [
     surround: '#3fb23f',
     strip: PALETTE.turf,
     shopFloor: PALETTE.shopFloor,
-    logo: { rim: TEAM.gold, ring: TEAM.navy, inner: TEAM.blue, top: 'STRETCH', bottom: 'PARK' },
+    logo: { rim: '#ffd21f', ring: '#7a2a8a', inner: '#ff5fa8', top: 'CANDY', bottom: 'CANYON' },
+    /** The mesas round the lobby: candy rock by terrace (low to high), and what grows on them. */
+    hills: { rock: ['#ffa27e', '#ff8aa8', '#f08ad8', '#c08cff', '#94a2ff'], cap: STYLE_MESA, trees: 'candy' },
     endNorth: 'FLY FAR!',
     /** The start arch and the ball shop's stages and sign. */
     arch: { pillar: '#ffd21f', base: TEAM.navy, glow: '#ffe27a', crest: '#ffb81f' },
@@ -111,6 +116,7 @@ export const VENUES = [
     strip: ['#f2dca0', '#ead196'],
     shopFloor: '#fbeed0',
     logo: { rim: '#ffd27a', ring: '#0b6f86', inner: '#ff6f61', top: 'PALM BEACH', bottom: 'PARK' },
+    hills: { rock: ['#f2d49a', '#ecc684', '#e2b672', '#d8a866', '#cf9c5e'], cap: STYLE_MESA, trees: 'palm' },
     endNorth: 'PALM BEACH',
     arch: { pillar: '#16b8c4', base: '#0b6f86', glow: '#bff6ff', crest: '#ff6f61' },
     shop: { band: '#ff6f61', strip: '#ffd27a', post: '#16b8c4', panel: '#0b6f86' },
@@ -119,13 +125,13 @@ export const VENUES = [
 export const venueOf = (world) => VENUES[world] ?? VENUES[0]
 
 export const LIGHTS = {
-  /** Cool fill from the sky, green bounce off the grass. */
-  hemiSky: '#cfe6ff',
-  hemiGround: '#a8c98e',
+  /** Lilac fill from the sky, a warm pink bounce off the candy ground. */
+  hemiSky: '#dcd8ff',
+  hemiGround: '#e8b4c4',
   hemiIntensity: 2.0,
 
   /** A bright, high midday sun. */
-  sunColor: '#fff6e4',
+  sunColor: '#fff0dc',
   sunIntensity: 1.9,
   /**
    * Direction *towards* the sun: high in the north-west, beyond the far end of the runway

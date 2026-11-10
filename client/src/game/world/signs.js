@@ -10,7 +10,7 @@ import {
   Vector3,
 } from 'three'
 
-import { ROLL_ZONE, SHOP_SIGN, SHOP_SIGN_FACING } from '@shared/world'
+import { LAUNCH_STAND, MAX_PULL, ROLL_ZONE, SHOP_SIGN, SHOP_SIGN_FACING } from '@shared/world'
 
 import { venueOf } from '../sceneStyle'
 import { DECAL_Y, DIGIT, DIRECTIONS, END_ZONE_TEXT, LOGO, yardNumbers } from './pitch'
@@ -232,13 +232,33 @@ const cellsFor = (v) => ({
 })
 
 /**
+ * The stretch lane's metre marks (5, 10 ... 40), painted beside its ticks on the west
+ * side - over the pad's yellow where they're on it (its top is 0.10), on the path beyond.
+ * Every number is made of the digits 0-5, all the atlas has.
+ */
+function laneNumbers() {
+  const out = []
+  const w = 1.25
+  for (let m = 5; m <= MAX_PULL; m += 5) {
+    const z = LAUNCH_STAND.z + m
+    const y = z <= ROLL_ZONE.maxZ + 0.8 ? 0.14 : DECAL_Y
+    const digits = String(m).split('').map(Number)
+    digits.forEach((d, i) => {
+      const x = LAUNCH_STAND.x - 4 - (digits.length - 1 - i) * (w + 0.05)
+      out.push({ cell: `digit${d}`, width: w, at: [x, y, z], yaw: 0, flat: true })
+    })
+  }
+  return out
+}
+
+/**
  * Every quad: which cell it shows, its width in the world (its height follows the cell's
  * shape), its centre, its turn about the vertical, and whether it lies flat on the ground
  * (north up on screen at yaw 0, so it reads from the south). Flat ones lie at DECAL_Y or
  * higher - at least 3 cm over whatever they're on.
  */
 function quadList() {
-  const zoneWidth = ROLL_ZONE.maxX - ROLL_ZONE.minX - 5
+  const zoneWidth = 7.5
   const quads = [
     { cell: 'arch', width: ARCH_SIGN.width - 0.3, at: [0, ARCH_SIGN.y, ARCH_SIGN.faceZ + 0.04], yaw: 0, flat: false },
     {
@@ -250,7 +270,10 @@ function quadList() {
       flat: false,
     },
     // Over the kick zone's yellow strip (top 0.10) and its navy chevrons (top 0.14).
-    { cell: 'zone', width: zoneWidth, at: [0, 0.18, (ROLL_ZONE.minZ + ROLL_ZONE.maxZ) / 2 + 0.3], yaw: 0, flat: true },
+    // Either side of the stretch lane down its middle.
+    { cell: 'zone', width: zoneWidth, at: [-8.6, 0.18, (ROLL_ZONE.minZ + ROLL_ZONE.maxZ) / 2 + 0.3], yaw: 0, flat: true },
+    { cell: 'zone', width: zoneWidth, at: [8.6, 0.18, (ROLL_ZONE.minZ + ROLL_ZONE.maxZ) / 2 + 0.3], yaw: 0, flat: true },
+    ...laneNumbers(),
     // The logo is drawn as a round disc, not a square, so the yard lines cut back round it
     // never run under its (clear) corners.
     { cell: 'logo', width: LOGO.radius * 2, at: [LOGO.x, DECAL_Y, LOGO.z], yaw: 0, flat: true, round: true },

@@ -84,7 +84,8 @@ function buildStands() {
  * their labels rewrite as you buy and equip. Three draw calls: stands, arms, halos.
  */
 export function TireShop() {
-  const owned = useGame((s) => s.profile.ownedTires)
+  // As a string: the profile is a fresh copy after every update (a launch, a rep...).
+  const ownedKey = useGame((s) => s.profile.ownedTires.join(','))
   const equipped = useGame((s) => s.profile.equippedTire)
   const standsRef = useRef(null)
   const halosRef = useRef(null)
@@ -116,14 +117,14 @@ export function TireShop() {
   // Recolour stands and rewrite their labels whenever ownership changes.
   useEffect(() => {
     const stands = standsRef.current
-    const profile = { ownedTires: owned, equippedTire: equipped }
+    const profile = { ownedTires: ownedKey.split(','), equippedTire: equipped }
     for (const stand of TIRE_STANDS) {
       const state = standState(profile, stand.index)
       stands?.setColorAt(stand.index, STAND_COLORS[state])
       updateWorldLabel(`stand-${stand.index}`, standLabelSpec(stand.index, state))
     }
     if (stands?.instanceColor) stands.instanceColor.needsUpdate = true
-  }, [owned, equipped])
+  }, [ownedKey, equipped])
 
   useFrame((state) => {
     const halos = halosRef.current

@@ -1,6 +1,6 @@
 import { CylinderGeometry, SphereGeometry } from 'three'
 
-import { LAUNCH_POSTS, LAUNCH_STAND, MAX_PULL, ROLL_ARCH, ROLL_ZONE } from '@shared/world'
+import { LAUNCH_POSTS, LAUNCH_STAND, MAX_PULL, ROLL_ARCH, ROLL_ZONE, STRETCH_LANE } from '@shared/world'
 
 import { STYLE } from '../materials'
 import { GRIP } from '../playerPose'
@@ -77,16 +77,35 @@ export function buildRollZone(blocks, props, { detail = true, world = 0 } = {}) 
     blocks.addOn(x, GRIP.y - 0.18, z, 0.46, 0.2, 0.46, '#ffffff', STYLE.SMOOTH)
     props.add(BALL, { position: [x, GRIP.y + 0.06, z], scale: [0.26, 0.2, 0.26], color: RUBBER, style: STYLE.GLOW })
   }
-  // Where you stand to grab them, and the way back: chevrons fading through the rainbow.
+  // Where you stand to grab them.
   props.add(DISC, { position: [LAUNCH_STAND.x, 0.13, LAUNCH_STAND.z], scale: [0.95, 0.04, 0.95], color: '#ffffff' })
   props.add(DISC, { position: [LAUNCH_STAND.x, 0.17, LAUNCH_STAND.z], scale: [0.75, 0.04, 0.75], color: RUBBER, style: STYLE.GLOW })
+  // The STRETCH LANE: a pink rubber strip on white rails running MAX_PULL (40 m) back
+  // from the stand, rainbow chevrons pointing the way you walk, a white tick every 5 m
+  // (the numbers are painted beside them: signs.js) and a glowing post at the far end.
+  // Its top (0.125) clears the pad's yellow (0.10) it starts on.
+  const laneX = LAUNCH_STAND.x
+  const laneStart = LAUNCH_STAND.z + 0.9
+  const laneEnd = STRETCH_LANE.maxZ
+  const laneMid = (laneStart + laneEnd) / 2
+  const laneLen = laneEnd - laneStart
+  blocks.addOn(laneX, 0, laneMid, 5.2, 0.11, laneLen + 0.4, '#ffffff', STYLE.SMOOTH)
+  blocks.addOn(laneX, 0, laneMid, 4.4, 0.125, laneLen, RUBBER, STYLE.PLATE)
   const CHEVRONS = ['#ff4a4a', '#ff9a1e', '#ffe23a', '#4be05a', '#2fd0ff', '#b05cff']
-  CHEVRONS.forEach((color, i) => {
-    const z = LAUNCH_STAND.z + 1.2 + (i * (MAX_PULL - 1)) / (CHEVRONS.length - 1)
+  for (let i = 0, z = LAUNCH_STAND.z + 2.5; z < LAUNCH_STAND.z + MAX_PULL; i += 1, z += 2.5) {
+    if (i % 2 === 1) continue
+    const color = CHEVRONS[(i / 2) % CHEVRONS.length]
     for (const side of [-1, 1]) {
-      blocks.add(LAUNCH_STAND.x + side * 0.42, 0.15, z - 0.2, 1.1, 0.06, 0.28, color, STYLE.GLOW, side * 0.75)
+      blocks.add(laneX + side * 0.5, 0.15, z + 1.05, 1.3, 0.06, 0.3, color, STYLE.GLOW, side * 0.75)
     }
-  })
+  }
+  for (let m = 5; m <= MAX_PULL; m += 5) {
+    blocks.add(laneX, 0.145, LAUNCH_STAND.z + m, 4.4, 0.05, 0.3, '#ffffff', STYLE.GLOW)
+  }
+  for (const side of [-1, 1]) {
+    blocks.addOn(laneX + side * 2.9, 0, laneEnd, 0.5, 1.6, 0.5, '#ffffff', STYLE.STRIPES)
+    props.add(BALL, { position: [laneX + side * 2.9, 1.9, laneEnd], scale: [0.45, 0.45, 0.45], color: CHEVRONS[5], style: STYLE.GLOW })
+  }
 
   // The start arch: striped pillars either side, a beam across the top carrying the
   // sign and a gold crest, and a glowing orb on each pillar.

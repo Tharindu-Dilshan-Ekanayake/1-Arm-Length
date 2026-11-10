@@ -32,6 +32,8 @@ import {
   rollDuration,
   SHOP,
   streakMultiplier,
+  STRETCH_REACH,
+  STRETCH_WINS,
   TIRES,
   TRAIN_INTERVAL,
   TROPHY_FIRST,
@@ -400,12 +402,14 @@ export const rollWinsAt = (health, world = 0) => baseRollWins(rollOutcome(health
  * would multiply a PERFECT kick's Wins dozens of times over late in the game. Without
  * the meter (Auto Kick) the kick is a plain x1 kick.
  */
-export function applyRoll(profile, now, accuracy = null, bonus = 1) {
-  const outcome = rollOutcome(profile.health, hitReach(accuracy))
+export function applyRoll(profile, now, accuracy = null, bonus = 1, stretch = 0) {
+  // `stretch` (0-1): how much of the 40 m stretch lane you'd walked back - further and richer.
+  const pulled = Math.min(1, Math.max(0, Number(stretch) || 0))
+  const outcome = rollOutcome(profile.health, hitReach(accuracy) * (1 + STRETCH_REACH * pulled))
   const distance = Math.round(outcome.distance * 10) / 10
   const grade = hitGrade(accuracy)
   // `bonus`: the session's own multipliers (a PERFECT combo, friends in the server).
-  const multiplier = winsMultiplier(profile, now) * (grade ? grade.bonus : 1) * Math.max(1, Number(bonus) || 1)
+  const multiplier = winsMultiplier(profile, now) * (grade ? grade.bonus : 1) * Math.max(1, Number(bonus) || 1) * (1 + STRETCH_WINS * pulled)
   const world = profile.world
   const worth = Math.round(rollReach(profile.health) * 10) / 10
   const wins = Math.max(1, Math.round(baseRollWins(worth, world) * multiplier))

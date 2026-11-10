@@ -1,7 +1,7 @@
 import { EGGS, PADS, PETS, RARITIES, SHOP, TIRES, WORLD_PORTALS, WORLDS } from '@shared/balance'
 import { formatNumber } from '@shared/format'
 import { isPadUnlocked } from '@shared/logic'
-import { EGG_STANDS, FREE_REWARD, padCenterZ, PORTALS, SPHINX_STAND, TABLE_X, TIRE_STANDS } from '@shared/world'
+import { EGG_STANDS, FREE_REWARD, LAUNCH_STAND, padCenterZ, PORTALS, SPHINX_STAND, STRETCH_LANE, TABLE_X, TIRE_STANDS } from '@shared/world'
 
 import { eggHeight } from '../world/eggs'
 import { BOARD_BOTTOM, BOARD_HEIGHT, PAD_THEMES } from '../world/structures'
@@ -196,7 +196,7 @@ const scoreboardLabel = () => ({
   position: [SCOREBOARD.x, SCOREBOARD.y + 0.8 + SCOREBOARD.height / 2, SCOREBOARD.z - 1.5],
   spec: {
     lines: [
-      { text: 'RUBBER ARM LAUNCH', size: 100, gradient: TEXT.gold },
+      { text: '+1 ARM LENGTH', size: 100, gradient: TEXT.gold },
       { text: 'STRETCH - FLY FAR - REBIRTH', size: 44, gradient: TEXT.white },
     ],
     pxPerUnit: 34,
@@ -245,7 +245,21 @@ const portalLabel = (profile) => (portal) => {
   }
 }
 
+/** Over the far end of the stretch lane: what walking further back gets you. */
+const laneLabel = () => ({
+  id: 'stretch-lane',
+  position: [LAUNCH_STAND.x, 4.4, STRETCH_LANE.maxZ],
+  spec: {
+    lines: [
+      { text: 'STRETCH LANE', size: 60, gradient: TEXT.gold },
+      { text: 'Longer arms = FLY FARTHER!', size: 40, gradient: TEXT.white },
+    ],
+    pxPerUnit: 52,
+  },
+  fade: 120,
+})
+
 /** Every label in the lobby. */
 export function lobbyLabels(profile, { sphinxStock = 0 } = {}) {
-  return [...padLabels(profile), ...standLabels(profile), ...eggLabels(profile), sphinxLabel(sphinxStock), scoreboardLabel(), freeRewardLabel(), ...PORTALS.map(portalLabel(profile))]
+  return [...padLabels(profile), ...standLabels(profile), ...eggLabels(profile), sphinxLabel(sphinxStock), scoreboardLabel(), freeRewardLabel(), laneLabel(), ...PORTALS.map(portalLabel(profile))]
 }

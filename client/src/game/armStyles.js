@@ -11,7 +11,7 @@ import {
 } from 'three'
 import { mergeGeometries } from 'three/examples/jsm/utils/BufferGeometryUtils.js'
 
-import { TIRES } from '@shared/balance'
+import { armGrowth } from '@shared/balance'
 
 import { glowTime } from './glow'
 
@@ -94,20 +94,8 @@ const PARSED = Object.fromEntries(
 )
 const styleOf = (id) => PARSED[id] || PARSED.bicycle
 
-const TIRE_INDEX = new Map(TIRES.map((t, i) => [t.id, i]))
-
-/**
- * How long your rubber arms have grown, 0-1: they start only a little longer than normal
- * and get longer with every pair of arms you buy (most of it) and every level you gain
- * (the rest), until, well upgraded, they hang down to the floor and drag along it
- * (playerPose.rubberArms). `cap` is your level cap, so a rebirth's higher cap doesn't
- * shrink them.
- */
-export function armGrowth(tireId, level = 1, cap = 15) {
-  const upgrade = (TIRE_INDEX.get(tireId) ?? 0) / (TIRES.length - 1)
-  const lvl = Math.min(1, Math.max(0, (level - 1) / Math.max(1, cap - 1)))
-  return 0.08 + 0.92 * Math.min(1, upgrade * 0.7 + lvl * 0.3)
-}
+/** How grown your rubber arms are (0-1): shared/balance armGrowth, used by the server too. */
+export { armGrowth }
 
 /** The colour of arms `id`'s trail, speed lines and glows. */
 export const armTrail = (id) => styleOf(id).trail
@@ -273,7 +261,7 @@ export function patchArmMaterial(material) {
     uArmA: { value: new Color() },
     uArmB: { value: new Color() },
     uArmC: { value: new Color() },
-    // pattern, glow, mix (0 = the avatar's own skin), unused
+    // pattern, glow, mix (0 = the avatar's own skin), hidden (1: rubber arms drawn instead)
     uArmStyle: { value: [0, 0, 0, 0] },
     uArmTime: glowTime,
   }
@@ -281,8 +269,8 @@ export function patchArmMaterial(material) {
   material.onBeforeCompile = (shader) => {
     Object.assign(shader.uniforms, uniforms)
     shader.vertexShader = shader.vertexShader
-      .replace('#include <common>', '#include <common>\nattribute float aArm;\nvarying float vArm;\nvarying vec3 vArmP;')
-      .replace('#include <begin_vertex>', '#include <begin_vertex>\nvArm = aArm;\nvArmP = position;')
+      .replace('#include <common>', '#include <common>\nattribute float aArm;\nuniform vec4 uArmStyle;\nvarying float vArm;\nvarying vec3 vArmP;')
+      .replace('#include <begin_vertex>', '#include <begin_vertex>\nvArm = aArm;\nvArmP = position;\nif (aArm > 0.5 && uArmStyle.w > 0.5) transformed = vec3(0.0);')
     shader.fragmentShader = shader.fragmentShader
       .replace(
         '#include <common>',
@@ -315,17 +303,21 @@ export function patchArmMaterial(material) {
   return material
 }
 
-/** Dresses a patched body material's arms as arms `id`. Cheap, and a no-op when unchanged. */
-export function setArmLook(material, id) {
+/**
+ * Dresses a patched body material's arms as arms `id` - or, `hide`, folds them away (the
+ * rubber arms are drawn in their place: createRubberArms). Cheap; a no-op when unchanged.
+ */
+export function setArmLook(material, id, hide = false) {
   const arm = material?.userData?.arm
-  if (!arm || arm.id === id) return
+  if (!arm || (arm.id === id && arm.hide === hide)) return
   arm.id = id
+  arm.hide = hide
   const s = styleOf(id)
   const u = arm.uniforms
   u.uArmA.value.copy(s.a)
   u.uArmB.value.copy(s.b)
   u.uArmC.value.copy(s.c)
-  u.uArmStyle.value = [s.pattern, s.glow, s.skin ? 0 : 1, 0]
+  u.uArmStyle.value = [s.pattern, s.glow, s.skin ? 0 : 1, hide ? 1 : 0]
 }
 
 // --- The shop's floating arms -----------------------------------------------------------
@@ -464,6 +456,191 @@ export function createArmDisplayMesh(max) {
 }
 
 export function disposeArmDisplayMesh(mesh) {
+  mesh.geometry.dispose()
+  mesh.dispose()
+}
+
+// --- The avatars' rubber arms -----------------------------------------------------------
+
+/**
+ * Rubber arms for an avatar, both in one draw call: each a round, gently tapering rubber
+ * tube from a ball at the shoulder down to a cuff at the wrist, ending in a big cartoon
+ * hand - palm, four fingers with rounded tips and the thumb on the outside. They replace
+ * the avatar's own blocky arms (setArmLook hides those) and are painted as the arms you've
+ * equipped, the pattern repeating down the tube however far it stretches.
+ *
+ * The geometry is one arm in its own frame: the shoulder at the origin, the tube running
+ * down to y = -1 and the hand hung below that, palm forward, fingers down. Per instance,
+ * `aArmPose` (length in metres, wrist bend, side) is applied in the vertex shader: the
+ * tube stretches to the length and thins as it goes, the hand rides on its end without
+ * stretching, bent back at the wrist by `bend` (so dragged along the floor it lies flat,
+ * palm down, fingers trailing), and only the thumb for that side (+1: +X) is kept.
+ * Parts: 0 shoulder ball, 1 tube, 2 hand, 3 the +X thumb, 4 the -X thumb.
+ */
+function createRubberArmGeometry() {
+  const pieces = []
+  const add = (geometry, part, matrix) => {
+    const g = geometry.index ? geometry.toNonIndexed() : geometry
+    if (g !== geometry) geometry.dispose()
+    g.applyMatrix4(matrix)
+    for (const name of Object.keys(g.attributes)) if (name !== 'position' && name !== 'normal') g.deleteAttribute(name)
+    const pos = g.getAttribute('position')
+    const armP = new Float32Array(pos.count * 3)
+    for (let i = 0; i < pos.count; i += 1) {
+      armP[i * 3] = pos.getX(i) * 5
+      armP[i * 3 + 1] = pos.getY(i) * 5 + 4
+      armP[i * 3 + 2] = pos.getZ(i) * 5
+    }
+    g.setAttribute('aArmP', new BufferAttribute(armP, 3))
+    g.setAttribute('aPart', new BufferAttribute(new Float32Array(pos.count).fill(part), 1))
+    pieces.push(g)
+  }
+  const m = () => new Matrix4()
+  // Shoulder ball and the tube.
+  add(new SphereGeometry(0.17, 10, 7), 0, m())
+  add(new CylinderGeometry(0.15, 0.12, 1, 12, 1, true), 1, m().makeTranslation(0, -0.5, 0))
+  // The hand: a cuff, the palm, four fingers (the middle two longest) with round tips.
+  add(new CylinderGeometry(0.14, 0.14, 0.07, 10, 1), 2, m().makeTranslation(0, -1.0, 0))
+  add(new BoxGeometry(0.25, 0.22, 0.11), 2, m().makeTranslation(0, -1.13, 0))
+  const lengths = [0.13, 0.16, 0.15, 0.12]
+  for (let i = 0; i < 4; i += 1) {
+    const x = -0.09 + i * 0.06
+    const l = lengths[i]
+    add(new BoxGeometry(0.052, l, 0.085), 2, m().makeTranslation(x, -1.24 - l / 2, 0))
+    add(new SphereGeometry(0.036, 6, 4), 2, m().makeScale(1, 0.8, 1.15).setPosition(x, -1.24 - l, 0))
+  }
+  // The thumbs, one for each side, angled out and down from the palm's edge.
+  for (const side of [1, -1]) {
+    add(new BoxGeometry(0.065, 0.14, 0.08), side > 0 ? 3 : 4, m().makeRotationZ(-0.65 * side).setPosition(0.15 * side, -1.15, 0.01))
+  }
+  const merged = mergeGeometries(pieces, false)
+  for (const piece of pieces) piece.dispose()
+  return merged
+}
+
+let rubberArmGeometry = null
+let rubberArmMaterial = null
+
+const RUBBER_VERTEX_HEAD = /* glsl */ `
+  attribute vec3 aArmP;
+  attribute float aPart;
+  attribute vec3 aArmA;
+  attribute vec3 aArmB;
+  attribute vec3 aArmC;
+  attribute vec2 aArmStyle;
+  attribute vec3 aArmPose;
+  varying vec3 vArmP;
+  varying vec3 vArmA;
+  varying vec3 vArmB;
+  varying vec3 vArmC;
+  varying vec2 vArmStyle;
+`
+
+const RUBBER_VERTEX_SHAPE = /* glsl */ `
+  float armLen = max(aArmPose.x, 0.05);
+  vec3 armPos = position;
+  vec3 objectNormal = normal;
+  vArmP = aArmP;
+  if (aPart > 0.5 && aPart < 1.5) {
+    // The tube: stretched to length, thinner the longer, the pattern repeating down it.
+    armPos.xz *= clamp(sqrt(0.63 / armLen), 0.5, 1.15);
+    armPos.y *= armLen;
+    vArmP.y = (aArmP.y - 4.0) * max(1.0, armLen / 0.63) + 4.0;
+  } else if (aPart > 1.5) {
+    // The hand on the wrist: only this side's thumb, bent back at the wrist by aArmPose.y.
+    if ((aPart > 2.5 && aPart < 3.5 && aArmPose.z < 0.0) || (aPart > 3.5 && aArmPose.z > 0.0)) armPos = vec3(0.0, -1.0, 0.0);
+    vec3 h = armPos - vec3(0.0, -1.0, 0.0);
+    float bc = cos(aArmPose.y);
+    float bs = sin(aArmPose.y);
+    h = vec3(h.x, h.y * bc - h.z * bs, h.z * bc + h.y * bs);
+    objectNormal = vec3(objectNormal.x, objectNormal.y * bc - objectNormal.z * bs, objectNormal.z * bc + objectNormal.y * bs);
+    armPos = vec3(0.0, -armLen, 0.0) + h;
+  }
+  vArmA = aArmA;
+  vArmB = aArmB;
+  vArmC = aArmC;
+  vArmStyle = aArmStyle;
+`
+
+function getRubberArmMaterial() {
+  if (rubberArmMaterial) return rubberArmMaterial
+  const material = new MeshLambertMaterial({ color: 0xffffff })
+  material.onBeforeCompile = (shader) => {
+    shader.uniforms.uArmTime = glowTime
+    shader.vertexShader = shader.vertexShader
+      .replace('#include <common>', `#include <common>\n${RUBBER_VERTEX_HEAD}`)
+      .replace('#include <beginnormal_vertex>', RUBBER_VERTEX_SHAPE)
+      .replace('#include <begin_vertex>', 'vec3 transformed = armPos;')
+    shader.fragmentShader = shader.fragmentShader
+      .replace(
+        '#include <common>',
+        `#include <common>
+        uniform float uArmTime;
+        varying vec3 vArmP;
+        varying vec3 vArmA;
+        varying vec3 vArmB;
+        varying vec3 vArmC;
+        varying vec2 vArmStyle;
+        ${ARM_GLSL}`,
+      )
+      .replace(
+        '#include <map_fragment>',
+        `#include <map_fragment>
+        vec4 armPaint = armLook(vArmP, vArmStyle.x, vArmA, vArmB, vArmC, vArmStyle.y, uArmTime);
+        diffuseColor.rgb = armPaint.rgb;`,
+      )
+      .replace('#include <emissivemap_fragment>', '#include <emissivemap_fragment>\ntotalEmissiveRadiance += armPaint.rgb * armPaint.a * 0.8;')
+  }
+  material.customProgramCacheKey = () => 'arm-rubber-v1'
+  rubberArmMaterial = material
+  return material
+}
+
+/**
+ * One avatar's pair of rubber arms (instance 0 left, 1 right). `setArm(id)` paints both as
+ * arms `id` (a no-op when unchanged); `setPose(i, length, bend, side)` shapes one (see
+ * createRubberArmGeometry). Placed each frame by avatarRig.placeRubberArms. The arm's
+ * shape and the material are shared by every avatar; disposeRubberArms frees the rest.
+ */
+export function createRubberArms() {
+  rubberArmGeometry ??= createRubberArmGeometry()
+  const geometry = rubberArmGeometry.clone()
+  const attr = (name, size) => {
+    const a = new InstancedBufferAttribute(new Float32Array(2 * size), size)
+    geometry.setAttribute(name, a)
+    return a
+  }
+  const aA = attr('aArmA', 3)
+  const aB = attr('aArmB', 3)
+  const aC = attr('aArmC', 3)
+  const aStyle = attr('aArmStyle', 2)
+  const aPose = attr('aArmPose', 3)
+  const mesh = new InstancedMesh(geometry, getRubberArmMaterial(), 2)
+  mesh.frustumCulled = false
+  let painted = null
+  mesh.setArm = (id) => {
+    if (id === painted) return
+    painted = id
+    const s = styleOf(id)
+    for (let i = 0; i < 2; i += 1) {
+      aA.setXYZ(i, s.a.r, s.a.g, s.a.b)
+      aB.setXYZ(i, s.b.r, s.b.g, s.b.b)
+      aC.setXYZ(i, s.c.r, s.c.g, s.c.b)
+      aStyle.setXY(i, s.pattern, s.glow)
+    }
+    aA.needsUpdate = true
+    aB.needsUpdate = true
+    aC.needsUpdate = true
+    aStyle.needsUpdate = true
+  }
+  mesh.setPose = (i, length, bend, side) => {
+    aPose.setXYZ(i, length, bend, side)
+    aPose.needsUpdate = true
+  }
+  return mesh
+}
+
+export function disposeRubberArms(mesh) {
   mesh.geometry.dispose()
   mesh.dispose()
 }

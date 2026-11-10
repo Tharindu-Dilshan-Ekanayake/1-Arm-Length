@@ -22,7 +22,7 @@ import { venueOf } from '../sceneStyle'
  * decals over it: pitch.js, signs.js.)
  */
 
-const MAP = { minX: -64, maxX: 64, minZ: -44, maxZ: 162 }
+const MAP = { minX: -64, maxX: 64, minZ: -44, maxZ: PLAZA.maxZ + 12 }
 const MAP_W = MAP.maxX - MAP.minX
 const MAP_H = MAP.maxZ - MAP.minZ
 
@@ -68,9 +68,9 @@ export function createGroundMap(maxTexture, world = 0) {
   return texture
 }
 
-/** The lobby floor: grass (or sand at Palm Beach) and a blue path down the middle (the hills ring it). */
+/** The lobby floor: mint (or sand at Palm Beach) and a candy path down the middle (the mesas ring it). */
 const PARKS = {
-  grass: { grass: ['#4cc93f', '#43bd37'], path: ['#5cb8ff', '#6cc2ff'], edge: '#ffffff', ring: '#3aa834', portal: '#2f9a2c', yard: '#e8d9a8' },
+  grass: { grass: ['#8fe3c0', '#9eeccb'], path: ['#ff6fae', '#ff86bc'], edge: '#ffffff', ring: '#c08cff', portal: '#a46cf0', yard: '#fff0d8' },
   beach: { grass: ['#f2dca0', '#ead196'], path: ['#2fc8d8', '#48d6e4'], edge: '#ffffff', ring: '#e2bd7a', portal: '#16b8c4', yard: '#fbeed0' },
 }
 

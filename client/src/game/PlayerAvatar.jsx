@@ -19,7 +19,7 @@ import { useBloxity } from '../bloxity/BloxityContext'
 import { getEmoteClip, updateLocalEmote } from '../bloxity/emotes'
 import { shareLook } from '../net/connection'
 import { getGame } from '../store/game'
-import { setArmLook } from './armStyles'
+import { createRubberArms, disposeRubberArms, setArmLook } from './armStyles'
 import {
   animateRig,
   applyPart,
@@ -32,6 +32,7 @@ import {
   disposeMergedBody,
   mergeBody,
   placeFollowers,
+  placeRubberArms,
   placeHand,
   restInverses,
   updateEmote,
@@ -279,6 +280,10 @@ export const BloxityAvatar = forwardRef(function BloxityAvatar(
   }, [proportions])
   /** This avatar's emote playback (blend weight, clip time). */
   const emotePlayer = useMemo(() => createEmotePlayer(), [])
+  /** The rubber arms drawn in place of the avatar's own, for a game avatar (`armsId`). */
+  const wantsArms = Boolean(armsId)
+  const rubberArms = useMemo(() => (wantsArms ? createRubberArms() : null), [wantsArms])
+  useEffect(() => () => rubberArms && disposeRubberArms(rubberArms), [rubberArms])
 
   useFrame((_state, delta) => {
     try {
@@ -293,7 +298,13 @@ export const BloxityAvatar = forwardRef(function BloxityAvatar(
       updateEmote(rig, emotePlayer, emote, Math.min(delta, 0.1), getEmoteClip)
       placeFollowers(rig)
       if (handRef?.current) placeHand(rig, handRef.current)
-      if (armsId) setArmLook(bodyRef.current?.material, armsId())
+      if (armsId) {
+        const id = armsId()
+        // Rubber arms instead of the blocky ones (not on a custom character).
+        const shown = rubberArms ? placeRubberArms(rig, rubberArms, !custom) : false
+        rubberArms?.setArm(id)
+        setArmLook(bodyRef.current?.material, id, shown)
+      }
     } catch {
       // A malformed payload must not kill the render loop.
     }
@@ -311,6 +322,7 @@ export const BloxityAvatar = forwardRef(function BloxityAvatar(
       <group scale={fit.scale} position={[0, fit.footOffset, 0]}>
         <primitive object={character} />
       </group>
+      {rubberArms && <primitive object={rubberArms} />}
     </group>
   )
 })

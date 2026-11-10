@@ -748,3 +748,56 @@ export function placeHand(rig, hand) {
   parent.matrixWorld.decompose(_scratchP, _parentQ, _scratchS)
   hand.quaternion.copy(_parentQ.invert()).multiply(_boneQ).multiply(rig.handRestInv)
 }
+
+const _ra = new Vector3()
+const _rb = new Vector3()
+const _rd = new Vector3()
+const _rx = new Vector3()
+const _ry = new Vector3()
+const _rz = new Vector3()
+const _rm = new Matrix4()
+const _rInv = new Matrix4()
+const ARM_ENDS = [
+  ['ArmL1', 'ArmL2_leaf'],
+  ['ArmR1', 'ArmR2_leaf'],
+]
+
+/**
+ * Lays an avatar's rubber arms (armStyles.createRubberArms, a child of the avatar's group)
+ * along its posed arms: each from the shoulder joint to where the arm now ends, as long
+ * as the rubber has stretched it. The hand hangs palm forward, turning palm down as the
+ * arm reaches out, and bends back at the wrist the more the arm points down - so arms
+ * dragging along the floor drag their hands flat behind them. Run after the pose.
+ * Returns false (and hides them) when not `enabled` or for a rig without those bones.
+ */
+export function placeRubberArms(rig, arms, enabled = true) {
+  const parent = arms.parent
+  const ok = enabled && Boolean(parent) && ARM_ENDS.every(([a, b]) => rig.bones[a] && rig.bones[b])
+  arms.visible = ok
+  if (!ok) return false
+  parent.updateWorldMatrix(true, false)
+  _rInv.copy(parent.matrixWorld).invert()
+  for (let i = 0; i < 2; i += 1) {
+    const top = rig.bones[ARM_ENDS[i][0]].bone
+    const end = rig.bones[ARM_ENDS[i][1]].bone
+    end.updateWorldMatrix(true, false)
+    _ra.setFromMatrixPosition(top.matrixWorld).applyMatrix4(_rInv)
+    _rb.setFromMatrixPosition(end.matrixWorld).applyMatrix4(_rInv)
+    _rd.subVectors(_rb, _ra)
+    const length = _rd.length()
+    if (length < 1e-4) _rd.set(0, -1, 0)
+    else _rd.divideScalar(length)
+    // Which way the palm faces: forward hanging down, down reaching out.
+    const dy = Math.abs(_rd.y)
+    _rz.set(0, dy - 1, dy).addScaledVector(_rd, -(dy * _rd.z + (dy - 1) * _rd.y))
+    if (_rz.lengthSq() < 1e-6) _rz.set(1, 0, 0).addScaledVector(_rd, -_rd.x)
+    _rz.normalize()
+    _ry.copy(_rd).negate()
+    _rx.crossVectors(_ry, _rz)
+    arms.setMatrixAt(i, _rm.makeBasis(_rx, _ry, _rz).setPosition(_ra))
+    const bend = 1.45 * Math.min(1, Math.max(0, (-_rd.y - 0.4) / 0.4))
+    arms.setPose(i, length, bend, _ra.x >= 0 ? 1 : -1)
+  }
+  arms.instanceMatrix.needsUpdate = true
+  return true
+}

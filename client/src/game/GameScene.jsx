@@ -31,6 +31,7 @@ import ShaderWarmup from './ShaderWarmup'
 import { FOG, SKY } from './sceneStyle'
 import Sky from './Sky'
 import World from './world/World'
+import LaunchReach from './world/LaunchReach'
 import { showLobbySky } from './worldLook'
 
 // r3f-perf is a dev-only overlay (?perf in the URL). The DEV check is static, so the
@@ -249,6 +250,7 @@ export function GameScene({ onReady }) {
         <WorldSky world={world} />
         <Lighting />
         <World />
+        <LaunchReach />
         <WorldLabels />
         <TireShop />
         <EggDisplays />

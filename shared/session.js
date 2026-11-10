@@ -1,4 +1,4 @@
-import { comboBonus, crowdBonus, dayNumber, EGGS, hitGrade, ITEMS, MULTI_HATCH, PADS, ROLL_TICK, SHOP, TIRES, TRAIN_INTERVAL, WALK_STEP, ZONES } from './balance.js'
+import { comboBonus, crowdBonus, dayNumber, levelCap, EGGS, hitGrade, ITEMS, MULTI_HATCH, PADS, ROLL_TICK, SHOP, TIRES, TRAIN_INTERVAL, WALK_STEP, ZONES } from './balance.js'
 import { applyStreak, claimQuest, claimQuestBonus, ensureQuests, progressQuests, questText, rollLuckyGift } from './engage.js'
 import {
   advanceTutorial,
@@ -30,7 +30,7 @@ import {
   usePortal,
   usePotion,
 } from './logic.js'
-import { eggStandNear, FREE_REWARD, inRect, inRollZone, MAX_MOVE_SPEED, onPad, portalAt, STAR, standRect, TIRE_STANDS } from './world.js'
+import { eggStandNear, FREE_REWARD, inRect, inRollZone, MAX_MOVE_SPEED, MAX_PULL, maxPullFor, pullBackAt, onPad, portalAt, STAR, standRect, TIRE_STANDS } from './world.js'
 
 const TIRE_INDEX = Object.fromEntries(TIRES.map((t, i) => [t.id, i]))
 /** Reaching Outer Space earns its badge; the last stage has its own. */
@@ -213,7 +213,10 @@ export class PlayerSession {
       this.session.combo = grade?.id === 'perfect' ? (this.session.combo || 0) + 1 : 0
       const combo = this.session.combo
       const others = Math.max(0, Math.floor(this.getOthers?.() || 0))
-      const result = applyRoll(this.profile, now, accuracy, comboBonus(combo) * crowdBonus(others))
+      // How far back down the stretch lane you were (no further than your arms reach).
+      const reach = maxPullFor(this.profile.equippedTire, this.profile.level, levelCap(this.profile.rebirths))
+      const pulled = Math.min(reach + 0.5, pullBackAt(p.x, p.z))
+      const result = applyRoll(this.profile, now, accuracy, comboBonus(combo) * crowdBonus(others), pulled / MAX_PULL)
       const gift = rollLuckyGift(this.profile, this.rand)
       this.busyUntil = now + result.cooldown * 1000
       this.rollingUntil = now + result.duration * 1000
@@ -234,6 +237,7 @@ export class PlayerSession {
         combo,
         others,
         gift,
+        stretch: Math.round(pulled * 10) / 10,
       })
       this.onRoll?.(result)
       this.quest('launch', 1, now)

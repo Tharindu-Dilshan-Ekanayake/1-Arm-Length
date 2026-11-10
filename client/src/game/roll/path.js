@@ -1,9 +1,8 @@
 import { Euler, Quaternion, Vector3 } from 'three'
 
 import { ROLL_LAUNCH } from '@shared/balance'
-import { MAX_PULL, SLOPE_ANGLE, TRACK_START_Z } from '@shared/world'
+import { maxPullFor, SLOPE_ANGLE, TRACK_START_Z } from '@shared/world'
 
-import { armGrowth } from '../armStyles'
 import { BODY, GRIP } from '../playerPose'
 
 /**
@@ -72,15 +71,8 @@ const smooth = (a, b, x) => {
 
 /** How far back you can walk holding the posts, at full stretch, with the starter arms (metres). */
 export const PULL_DIST = 3.6
-/**
- * How far back you can walk before your arms are at full stretch: only a few metres with
- * your first arms at level 1, and much further as you buy better arms and level up (the
- * same growth as the arms' length, armStyles.armGrowth), up to MAX_PULL - the launch pad's
- * whole length.
- */
-export function maxPullFor(tireId, level = 1, cap = 15) {
-  return 3 + (MAX_PULL - 3) * armGrowth(tireId, level, cap)
-}
+/** How far back arms let you walk (shared/world maxPullFor: the server checks it too). */
+export { maxPullFor }
 
 /** The flight sets off this far ahead of where you stood: just past the posts. */
 export const PUSH_AHEAD = GRIP.ahead + 0.6

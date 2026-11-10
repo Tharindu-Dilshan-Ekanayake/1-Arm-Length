@@ -99,7 +99,7 @@ export function StatsPanel() {
   const rebirths = useGame((s) => s.profile.rebirths)
 
   return (
-    <div className="hud-stats pointer-events-none absolute flex flex-col">
+    <div className="hud-stats pointer-events-none absolute flex flex-col" style={{ contain: 'layout style' }}>
       <StatRow icon="rebirth" value={formatNumber(rebirths)} />
       <StatRow icon="trophy" value={formatNumber(wins)} gradient={GRADIENTS.gold} />
       <Boosts />
