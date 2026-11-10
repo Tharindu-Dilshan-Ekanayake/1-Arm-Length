@@ -30,8 +30,8 @@ const ICONS = {
 
 const BLURBS = {
   healthX2: 'Double every Power gain, forever',
-  winsX2: 'Double the Wins from every kick, forever',
-  autoRoll: 'Kicks for you on the Kick Zone',
+  winsX2: 'Double the Wins from every launch, forever',
+  autoRoll: 'Stretches and launches you from the Launch Pad',
   padVeryOp: 'Unlocks the x40 Diamond Pad',
   padBest: 'Unlocks the x100 Galaxy Pad',
   sphinx: `Limited: x${formatNumber(PETS.sphinx.mult)} Power pet`,

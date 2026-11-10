@@ -103,7 +103,7 @@ export function HealthBar() {
   const packs = healthPacks({ level, rebirths })
 
   return (
-    <div className="pointer-events-none absolute left-1/2 flex -translate-x-1/2 flex-col items-center" style={{ bottom: u(14), width: u(WIDTH), gap: u(8) }}>
+    <div className="pointer-events-none absolute left-1/2 flex -translate-x-1/2 flex-col items-center" style={{ bottom: u(14), width: u(WIDTH), gap: u(8), contain: 'layout style' }}>
       <div className="relative flex w-full items-end justify-between" style={{ height: u(84) }}>
         <span className="flex items-center" style={{ gap: u(6) }}>
           <Icon name="heart" size={u(96)} />

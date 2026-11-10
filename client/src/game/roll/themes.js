@@ -9,6 +9,28 @@
  * on the Moon, a floodlit night for the Championship... `sky` is { top, horizon, sun,
  * glow, clouds, stars } (see Sky.jsx).
  */
+/**
+ * The sunny day sky most stages fly under (a few late ones keep a sky of their own:
+ * volcano glow, neon night, the Moon, the aurora, space); `horizon` tints it per stage.
+ */
+const DAY_SKY = { top: '#2f80ea', horizon: '#c6e6ff', sun: '#ffffff', glow: 0.35, clouds: 0.85 }
+const DAY_TINTS = {
+  grassy: '#c6e6ff',
+  autumn: '#d8ecff',
+  desert: '#ffe9c4',
+  beach: '#d6f2ff',
+  jungle: '#cff0e0',
+  frozen: '#e8f2ff',
+  cherry: '#ffe2f0',
+  candy: '#ffe4f6',
+  mushroom: '#eadcff',
+  swamp: '#d8f0d0',
+  crystal: '#e0e4ff',
+  ocean: '#c8f0ff',
+  sky: '#dff2ff',
+  rainbow: '#f4e8ff',
+}
+
 export const ZONE_THEMES = {
   grassy: {
     floor: '#3ad456',
@@ -139,6 +161,11 @@ export const ZONE_THEMES = {
  * stands (Lane.jsx's buildings), hazy in the stage's light. Every stage looks like its
  * own place through its colours; the pitch is always a football field.
  */
+// Most stages: the sunny day sky, tinted at the horizon.
+for (const [id, horizon] of Object.entries(DAY_TINTS)) {
+  if (ZONE_THEMES[id]) ZONE_THEMES[id].sky = { ...DAY_SKY, horizon }
+}
+
 export const STAGE_LOOKS = {
   grassy: { field: '#555b68', style: 'ROAD', turf: ['#2fbf47', '#3ad456'], colors: ['#5a6787', '#776c8c', '#ffd27a'] },
   autumn: { field: '#5d5f66', style: 'ROAD', turf: ['#4fae3a', '#5cc544'], colors: ['#6f7f9f', '#8a8fa8', '#ffe8b0'] },

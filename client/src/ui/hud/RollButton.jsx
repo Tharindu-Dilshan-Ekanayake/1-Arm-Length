@@ -1,8 +1,9 @@
 import { useCallback, useEffect, useRef, useState } from 'react'
 
-import { HIT_GRADES, hitGrade, hitReach, METER_PERIOD, TUTORIAL } from '@shared/balance'
+import { HIT_GRADES, hitGrade, hitReach } from '@shared/balance'
 
 import { sfx } from '../../audio/sfx'
+import { cancelPull, grab, launch, letGo } from '../../game/launch'
 import { actions } from '../../net/actions'
 import { useGame } from '../../store/game'
 import Icon from '../Icon'
@@ -10,196 +11,221 @@ import StrokeText from '../StrokeText'
 import { ChunkyButton } from './parts'
 import { GRADIENTS, u } from './style'
 
-/**
- * A press is ignored this soon after the last (a double tap, a bouncing key). Short: the
- * needle first crosses the middle METER_PERIOD / 4 after the meter starts.
- */
-const PRESS_COOLDOWN_MS = 150
-/** With Auto Kick on, the next kick goes this long after you're back on the zone. */
+/** With Auto Launch on, the next launch starts this long after you're back at the posts. */
 const AUTO_DELAY_MS = 700
+/** Auto Launch lets go this long after reaching full stretch. */
+const AUTO_HOLD_MS = 200
+/** A press is ignored this soon after the last (a double tap, a bouncing key). */
+const PRESS_COOLDOWN_MS = 250
 
-/**
- * Where the needle is (0-1 across the bar) `ms` after the meter started from `start` (a
- * phase, 0-1, picked at random each kick): a pendulum, lingering at the ends and
- * fastest through the middle, so the PERFECT moment is a short one.
- */
-const needleAt = (ms, start) => 0.5 - 0.5 * Math.cos((ms / 1000 / METER_PERIOD + start) * Math.PI * 2)
-/** 1 dead centre, 0 at either end: what the server grades. */
-const accuracyAt = (pos) => 1 - Math.abs(pos * 2 - 1)
-
-/** The bar's bands, from the grades: [from, to] as fractions of its width, centre out. */
-/** The bar's coloured bands, from the grades: each runs `half` of the bar either side of its centre. */
-const BANDS = HIT_GRADES.filter((g) => g.min > 0).map((g) => ({ id: g.id, half: (1 - g.min) / 2 }))
+/** The meter's coloured bands, from the grades: each runs from its `min` to the top. */
+const BANDS = HIT_GRADES.filter((g) => g.min > 0).map((g) => ({ id: g.id, from: g.min }))
 const BAND_COLORS = {
   perfect: 'linear-gradient(180deg, #fff6a3 0%, #ffd21f 55%, #ff9c00 100%)',
   great: 'linear-gradient(180deg, #d9ff9a 0%, #5fe83a 55%, #1fb52a 100%)',
-  good: 'linear-gradient(180deg, #fff3b0 0%, #ffe23a 55%, #f0b400 100%)',
+  good: 'linear-gradient(180deg, #bff4ff 0%, #4fc8ff 55%, #1f8ae0 100%)',
 }
 /** Each grade's colour for the live label over the meter. */
-const GRADE_COLORS = { perfect: '#ffd21f', great: '#7dff4a', good: '#fff3a0', weak: '#ff6a5a' }
+const GRADE_COLORS = { perfect: '#ffd21f', great: '#7dff4a', good: '#9fe8ff', weak: '#ff6a5a' }
 
 /**
- * The big green KICK! button, shown while standing on the KICK ZONE. Press it (or E /
- * Enter) and a timing meter swings under your ball: press again to hit. The nearer the
- * middle you stop it, the more the kick pays (HIT_GRADES). With the Auto Kick pass, a
- * toggle under it kicks for you every time you're back, without the meter.
+ * The launch posts' HUD: the stretch meter and the LAUNCH! button, shown by the posts.
+ * Walk up to the posts and you grab them by themselves (or press E /
+ * Enter); then walk BACK with your joystick or keys - your arms stretch like rubber and
+ * the stretch meter fills with how far back you've got (out of how far your arms reach).
+ * At full stretch the rubber twangs and the meter bounces off the top. Stop pulling back
+ * (let go of the stick or key - the button works too) to fly out between the posts: the fuller the meter, the further you fly and the more it pays
+ * (HIT_GRADES) - let go right at the top of a twang for PERFECT. With the Auto Launch pass,
+ * a toggle under it grabs, walks back and lets go for you every time you're back (a plain
+ * launch, no meter). Jumping lets go of the posts without launching.
  *
- * The needle is moved straight on the DOM every animation frame; React only hears about
- * the meter starting and stopping.
+ * The meter is moved straight on the DOM every animation frame (the player keeps
+ * launch.charge up to date); React only hears about grabbing and letting go.
  */
 export function RollButton() {
-  const visible = useGame((s) => s.zone.rollZone && !s.roll && !s.rollResult && !s.panel)
+  const near = useGame((s) => s.zone.atPosts && !s.roll && !s.rollResult && !s.panel)
   const ownsAuto = useGame((s) => Boolean(s.profile.passes.autoRoll))
   const autoOn = useGame((s) => Boolean(s.profile.passes.autoRoll && s.profile.settings.autoRoll))
-  // The bouncing arrow over it is for the tutorial's kick step only.
-  const pointAt = useGame((s) => TUTORIAL[s.profile.tutorialStep]?.event === 'roll')
+  /** Holding the posts right now (mirrors launch.gripping for React). */
+  const [gripping, setGripping] = useState(false)
+  const [auto, setAuto] = useState(false)
   const lastPress = useRef(-Infinity)
-  /** performance.now() the meter started swinging, or 0 while it's put away. */
-  const [aimingSince, setAimingSince] = useState(0)
-  /** Where in its swing the needle starts this kick (0-1): random, so no rhythm works every time. */
-  const [aimStart, setAimStart] = useState(0)
-  const needleRef = useRef(null)
-  const percentRef = useRef(null)
+  const fillRef = useRef(null)
+  const labelRef = useRef(null)
+  const hintRef = useRef(null)
+  const visible = near || gripping
+
+  const doGrab = useCallback((byAuto = false) => {
+    if (launch.gripping || launch.released) return
+    grab(byAuto)
+    sfx.stretchStart()
+    setGripping(true)
+    setAuto(byAuto)
+  }, [])
+
+  /** Lets go; `plain` sends no meter reading (Auto Launch). */
+  const doLetGo = useCallback((plain = false) => {
+    if (!launch.gripping) return
+    const charge = letGo()
+    sfx.stretchStop()
+    setGripping(false)
+    setAuto(false)
+    actions.roll(plain ? undefined : Math.round(charge * 1000) / 1000)
+  }, [])
 
   const press = useCallback(() => {
     const now = performance.now()
     if (now - lastPress.current < PRESS_COOLDOWN_MS) return
     lastPress.current = now
-    if (!aimingSince) {
-      // First press: the meter starts swinging.
-      sfx.click()
-      setAimStart(Math.random())
-      setAimingSince(now)
-      return
+    if (launch.gripping) doLetGo()
+    else doGrab()
+  }, [doGrab, doLetGo])
+
+  // You can also grab the posts by walking up to them and let go by stopping pulling
+  // back (Player.jsx), with no button: keep the meter in step with that.
+  useEffect(() => {
+    if (!visible) return undefined
+    const id = setInterval(() => {
+      setGripping(launch.gripping)
+      setAuto(launch.auto)
+    }, 80)
+    return () => clearInterval(id)
+  }, [visible])
+
+  // A panel opened or the launch started: let go of the posts.
+  const panel = useGame((s) => s.panel)
+  const rolling = useGame((s) => Boolean(s.roll))
+  const [blocked, setBlocked] = useState(false)
+  if (Boolean(panel || rolling) !== blocked) {
+    setBlocked(Boolean(panel || rolling))
+    if (panel || rolling) {
+      setGripping(false)
+      setAuto(false)
     }
-    // Second press: hit it where the needle is.
-    const accuracy = accuracyAt(needleAt(now - aimingSince, aimStart))
-    setAimingSince(0)
-    actions.roll(Math.round(accuracy * 1000) / 1000)
-  }, [aimingSince, aimStart])
-
-  const autoServe = useCallback(() => {
-    setAimingSince(0)
-    actions.roll()
-  }, [])
-
-  // Off the zone (or into a kick) the meter is put away.
-  const [wasVisible, setWasVisible] = useState(visible)
-  if (visible !== wasVisible) {
-    setWasVisible(visible)
-    if (!visible) setAimingSince(0)
   }
+  useEffect(() => {
+    if (!blocked || !launch.gripping) return
+    cancelPull()
+    sfx.stretchStop()
+  }, [blocked])
 
   useEffect(() => {
     if (!visible) return undefined
     const onKey = (e) => {
-      if (e.repeat) return
-      if (e.code === 'KeyE' || e.code === 'Enter') press()
+      if (!e.repeat && (e.code === 'KeyE' || e.code === 'Enter')) press()
     }
     window.addEventListener('keydown', onKey)
     return () => window.removeEventListener('keydown', onKey)
   }, [visible, press])
 
-  // Auto Kick: kick again as soon as you're back on the zone.
+  // Auto Launch: grab and walk back by itself every time you're back at the posts.
   useEffect(() => {
-    if (!visible || !autoOn) return undefined
-    const id = setTimeout(autoServe, AUTO_DELAY_MS)
+    if (!near || !autoOn || gripping) return undefined
+    const id = setTimeout(() => doGrab(true), AUTO_DELAY_MS)
     return () => clearTimeout(id)
-  }, [visible, autoOn, autoServe])
+  }, [near, autoOn, gripping, doGrab])
 
-  // The needle, every frame, while aiming.
+  // The meter, every frame, while gripping (and noticing a jump letting go).
   useEffect(() => {
-    if (!aimingSince) return undefined
+    if (!gripping) return undefined
     let raf = 0
     const tick = () => {
-      const pos = needleAt(performance.now() - aimingSince, aimStart)
-      if (needleRef.current) needleRef.current.style.left = `${pos * 100}%`
-      // The grade a hit right now would be, in its colour: both layers of the outlined
-      // text (StrokeText), the outline and the fill.
-      const accuracy = accuracyAt(pos)
-      const grade = hitGrade(accuracy)
-      // The grade and how far it would send the ball: "PERFECT x1.5 DISTANCE".
-      const text = `${grade.label.replace(/[!.]+$/, '')} x${hitReach(accuracy).toFixed(1)} DISTANCE`
-      for (const layer of percentRef.current?.querySelectorAll('.pp-text-stroke, .pp-text-fill') ?? []) layer.textContent = text
-      const fill = percentRef.current?.querySelector('.pp-text-fill')
-      if (fill) fill.style.color = GRADE_COLORS[grade.id]
+      if (!launch.gripping) {
+        // Let go some other way (a jump): put the meter away.
+        sfx.stretchStop()
+        setGripping(false)
+        setAuto(false)
+        return
+      }
+      const charge = launch.charge
+      sfx.stretchSet(charge, launch.full)
+      if (auto && launch.full && performance.now() - launch.fullSince > AUTO_HOLD_MS) {
+        doLetGo(true)
+        return
+      }
+      if (fillRef.current) fillRef.current.style.width = `${charge * 100}%`
+      // The grade letting go now would get, in its colour, and how far it would fling
+      // you: "LET GO! PERFECT x1.5". Both layers of the outlined text (StrokeText).
+      const grade = hitGrade(charge)
+      const text = launch.full ? `RELEASE! ${grade.label.replace(/[!.]+$/, '')} x${hitReach(charge).toFixed(1)}` : `WALK BACK! ${Math.round(launch.back)}m / ${Math.round(launch.max)}m`
+      for (const layer of labelRef.current?.querySelectorAll('.pp-text-stroke, .pp-text-fill') ?? []) layer.textContent = text
+      const fill = labelRef.current?.querySelector('.pp-text-fill')
+      if (fill) fill.style.color = launch.full ? GRADE_COLORS[grade.id] : '#ffffff'
+      if (hintRef.current) hintRef.current.style.opacity = launch.full ? '0' : '1'
       raf = requestAnimationFrame(tick)
     }
     tick()
     return () => cancelAnimationFrame(raf)
-  }, [aimingSince, aimStart])
+  }, [gripping, auto, doLetGo])
 
   if (!visible) return null
-  const label = 'KICK!'
   return (
-    <div className="pointer-events-none absolute left-1/2 flex -translate-x-1/2 flex-col items-center" style={{ bottom: u(300) }}>
-      {pointAt && !aimingSince && <Icon name="arrowDown" size={u(80)} className="pp-bounce" style={{ marginBottom: u(8) }} />}
-      {aimingSince > 0 && (
-        <div className="flex flex-col items-center" style={{ marginBottom: u(18) }}>
-          <span ref={percentRef} className="whitespace-nowrap" style={{ fontSize: u(54), color: '#ffd21f' }}>
-            <StrokeText stroke={u(11)}>WEAK KICK x0.5 DISTANCE</StrokeText>
+    <>
+      {/* The stretch meter, up under the top bar: the middle of the screen is you,
+          walking back from the posts. */}
+      {gripping && !auto && (
+        <div className="pointer-events-none absolute left-1/2 flex -translate-x-1/2 flex-col items-center" style={{ top: u(150) }}>
+          <span ref={labelRef} className="whitespace-nowrap" style={{ fontSize: u(54), color: '#ffffff' }}>
+            <StrokeText stroke={u(11)}>WALK BACK! 0%</StrokeText>
           </span>
           <div
-            className="relative overflow-visible"
+            className="relative overflow-hidden"
             style={{
               width: u(560),
               height: u(54),
               borderRadius: u(27),
               border: `${u(6)} solid #1b1b1f`,
-              background: 'linear-gradient(90deg, #ff3b3b 0%, #ff7a2a 100%)',
+              background: '#2a1f4a',
               boxShadow: `0 ${u(6)} 0 rgba(0,0,0,0.35)`,
             }}
           >
-            {BANDS.slice()
-              .reverse()
-              .map((b) => (
-                <div
-                  key={b.id}
-                  className="absolute top-0 bottom-0"
-                  style={{ left: `${(0.5 - b.half) * 100}%`, width: `${b.half * 200}%`, background: BAND_COLORS[b.id] }}
-                />
-              ))}
+            {/* The grade bands, faint, along the top end of the meter. */}
+            {BANDS.map((b) => (
+              <div key={b.id} className="absolute top-0 bottom-0" style={{ left: `${b.from * 100}%`, right: 0, background: BAND_COLORS[b.id], opacity: 0.32 }} />
+            ))}
+            {/* The stretch itself: a rubber band filling up. */}
             <div
-              ref={needleRef}
-              className="absolute"
+              ref={fillRef}
+              className="absolute top-0 bottom-0 left-0"
               style={{
-                top: u(-14),
-                bottom: u(-14),
-                width: u(22),
-                marginLeft: u(-11),
-                left: '0%',
-                borderRadius: u(8),
-                background: '#ffffff',
-                border: `${u(5)} solid #1b1b1f`,
+                width: '0%',
+                background: 'repeating-linear-gradient(135deg, #ff5fa8 0 14px, #ff8fd0 14px 28px)',
+                borderRight: `${u(5)} solid #ffffff`,
               }}
             />
+            {BANDS.map((b) => (
+              <div key={`${b.id}-mark`} className="absolute top-0 bottom-0" style={{ left: `${b.from * 100}%`, width: u(4), background: '#1b1b1f', opacity: 0.6 }} />
+            ))}
           </div>
-          <span style={{ fontSize: u(30), marginTop: u(10) }}>
-            <StrokeText stroke={u(7)}>Stop it in the middle: the harder you hit, the further it flies!</StrokeText>
+          <span ref={hintRef} className="flex items-center" style={{ fontSize: u(32), marginTop: u(10), gap: u(8) }}>
+            <Icon name="arrowDown" size={u(40)} />
+            <StrokeText stroke={u(7)}>Walk BACK to stretch your arms - then RELEASE at the very top!</StrokeText>
           </span>
         </div>
       )}
-      <ChunkyButton gradient={aimingSince ? GRADIENTS.goldButton : GRADIENTS.greenButton} onClick={press} title={label} radius={12} border={6} className="pp-roll-btn" style={{ width: u(360), height: u(104), gap: u(10) }}>
-        <Icon name="tire" size={u(84)} />
-        <span style={{ fontSize: u(76) }}>
-          <StrokeText stroke={u(14)}>{label}</StrokeText>
-        </span>
-      </ChunkyButton>
-      {ownsAuto && (
-        <ChunkyButton
-          gradient={autoOn ? GRADIENTS.goldButton : GRADIENTS.greyButton}
-          onClick={() => actions.setSetting('autoRoll', !autoOn)}
-          title="Auto Kick"
-          radius={10}
-          border={4}
-          style={{ height: u(56), padding: `0 ${u(20)}`, marginTop: u(12) }}
-        >
-          <span style={{ fontSize: u(32) }}>
-            <StrokeText stroke={u(7)}>Auto Kick: {autoOn ? 'ON' : 'OFF'}</StrokeText>
+      <div className="pointer-events-none absolute left-1/2 flex -translate-x-1/2 flex-col items-center" style={{ bottom: u(300) }}>
+        {/* No button: walking up to the posts grabs them, letting go of the stick launches. */}
+        {!gripping && (
+          <span style={{ fontSize: u(34) }}>
+            <StrokeText stroke={u(7)}>Walk up to the posts, pull BACK, then release!</StrokeText>
           </span>
-        </ChunkyButton>
-      )}
-    </div>
+        )}
+        {ownsAuto && (
+          <ChunkyButton
+            gradient={autoOn ? GRADIENTS.goldButton : GRADIENTS.greyButton}
+            onClick={() => actions.setSetting('autoRoll', !autoOn)}
+            title="Auto Launch"
+            radius={10}
+            border={4}
+            style={{ height: u(56), padding: `0 ${u(20)}`, marginTop: u(12) }}
+          >
+            <span style={{ fontSize: u(32) }}>
+              <StrokeText stroke={u(7)}>Auto Launch: {autoOn ? 'ON' : 'OFF'}</StrokeText>
+            </span>
+          </ChunkyButton>
+        )}
+      </div>
+    </>
   )
 }
 

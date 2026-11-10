@@ -1,5 +1,8 @@
-import { TUTORIAL } from '@shared/balance'
-import { formatNumber } from '@shared/format'
+import { rebirthMultiplier, TUTORIAL } from '@shared/balance'
+import { formatDistance, formatNumber } from '@shared/format'
+import { isMaxLevel, nextTire, zoneIndexAt } from '@shared/logic'
+
+import { zones } from '../../game/worldLook'
 
 import { useGame } from '../../store/game'
 import StrokeText from '../StrokeText'
@@ -19,7 +22,7 @@ function TutorialBanner({ step }) {
   const onZone = useGame((s) => s.zone.rollZone)
   let text = current.text
   if (current.health) text += ` (${formatNumber(Math.min(health, current.health))}/${formatNumber(current.health)})`
-  if (current.event === 'roll' && onZone) text = 'Press KICK!'
+  if (current.event === 'roll' && onZone) text = 'Pull BACK to stretch, then let go of the stick!'
   return (
     <div
       className="flex items-center"
@@ -50,15 +53,71 @@ function TutorialBanner({ step }) {
 }
 
 /**
- * Top centre: the tutorial while there is one, and nothing after it, so the screen
- * belongs to the game. (The playtime gift lives on the left menu: GiftTile.)
+ * The next goal, always in sight once the tutorial's done - something close enough to
+ * chase: rebirth when you're at max level, else the next pair of arms and how far your
+ * Wins are from it, else the next stage down the runway past your best flight. A tap
+ * opens what it's about.
+ */
+function GoalBanner() {
+  const profile = useGame((s) => s.profile)
+  const pending = useGame((s) => s.pendingWins)
+  const openPanel = useGame((s) => s.openPanel)
+  let text
+  let progress = null
+  let panel = null
+  if (isMaxLevel(profile)) {
+    text = `REBIRTH READY! Rebirth for x${rebirthMultiplier(profile.rebirths + 1)} Power`
+    panel = 'rebirth'
+  } else {
+    const next = nextTire(profile)
+    if (next) {
+      const wins = Math.max(0, profile.wins - pending)
+      text = wins >= next.cost ? `You can buy ${next.name}! Visit the Arm Shop` : `Next arms: ${next.name}`
+      progress = Math.min(1, wins / Math.max(1, next.cost))
+      if (wins < next.cost) text += ` (${formatNumber(wins)}/${formatNumber(next.cost)} Wins)`
+    } else {
+      const stages = zones()
+      const nextStage = stages[Math.min(stages.length - 1, zoneIndexAt(profile.stats.bestDistance) + 1)]
+      text = `Next stage: ${nextStage.name} at ${formatDistance(nextStage.start)} (best ${formatDistance(profile.stats.bestDistance)})`
+      progress = Math.min(1, profile.stats.bestDistance / Math.max(1, nextStage.start))
+    }
+  }
+  return (
+    <button
+      type="button"
+      onClick={panel ? () => openPanel(panel) : undefined}
+      className={`${panel ? 'pp-btn pointer-events-auto' : ''} relative flex flex-col items-center overflow-hidden`}
+      style={{
+        padding: `${u(6)} ${u(24)} ${u(progress === null ? 6 : 14)}`,
+        borderRadius: u(30),
+        border: `${u(4)} solid #111`,
+        background: panel ? 'linear-gradient(180deg, #b4efff 0%, #4cb8ff 50%, #2477e8 100%)' : PANEL_GRADIENT,
+        boxShadow: `0 ${u(4)} 0 rgba(0,0,0,0.3), inset 0 ${u(4)} 0 rgba(255,255,255,0.45)`,
+      }}
+    >
+      <span style={{ fontSize: u(32) }}>
+        <StrokeText stroke={u(7)} style={{ whiteSpace: 'normal' }}>
+          {text}
+        </StrokeText>
+      </span>
+      {progress !== null && (
+        <span className="absolute bottom-0 left-0 right-0" style={{ height: u(8), background: 'rgba(0,0,0,0.35)' }}>
+          <span className="block h-full origin-left" style={{ transform: `scaleX(${progress})`, background: '#3fe05a' }} />
+        </span>
+      )}
+    </button>
+  )
+}
+
+/**
+ * Top centre: the tutorial while there is one, then the next goal (GoalBanner). (The
+ * playtime gift lives on the left menu: GiftTile.)
  */
 export function TopCenter() {
   const step = useGame((s) => s.profile.tutorialStep)
-  if (!TUTORIAL[step]) return null
   return (
     <div className="hud-topcenter pointer-events-none absolute left-1/2 flex -translate-x-1/2 flex-col items-center" style={{ width: 'max-content', maxWidth: '90vw' }}>
-      <TutorialBanner step={step} />
+      {TUTORIAL[step] ? <TutorialBanner step={step} /> : <GoalBanner />}
     </div>
   )
 }

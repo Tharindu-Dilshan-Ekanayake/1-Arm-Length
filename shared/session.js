@@ -1,4 +1,5 @@
-import { EGGS, ITEMS, MULTI_HATCH, PADS, ROLL_TICK, SHOP, TIRES, TRAIN_INTERVAL, WALK_STEP, ZONES } from './balance.js'
+import { comboBonus, crowdBonus, dayNumber, levelCap, EGGS, hitGrade, ITEMS, MULTI_HATCH, PADS, ROLL_TICK, SHOP, TIRES, TRAIN_INTERVAL, WALK_STEP, ZONES } from './balance.js'
+import { applyStreak, claimQuest, claimQuestBonus, ensureQuests, progressQuests, questText, rollLuckyGift } from './engage.js'
 import {
   advanceTutorial,
   applyAdReward,
@@ -29,12 +30,14 @@ import {
   usePortal,
   usePotion,
 } from './logic.js'
-import { eggStandNear, FREE_REWARD, inRect, inRollZone, MAX_MOVE_SPEED, onPad, portalAt, STAR, standRect, TIRE_STANDS } from './world.js'
+import { eggStandNear, FREE_REWARD, inRect, inRollZone, MAX_MOVE_SPEED, MAX_PULL, maxPullFor, pullBackAt, onPad, portalAt, STAR, standRect, TIRE_STANDS } from './world.js'
 
 const TIRE_INDEX = Object.fromEntries(TIRES.map((t, i) => [t.id, i]))
 /** Reaching Outer Space earns its badge; the last stage has its own. */
 const SPACE_ZONE = ZONES.findIndex((z) => z.id === 'space')
 
+/** Quest progress is sent at least this often (seconds) while it's changing. */
+const QUEST_SYNC = 5
 /** How far off a pad still counts as "on" it (network jitter). */
 const PAD_SLACK = 0.8
 /** Same for the roll zone. */
@@ -62,6 +65,12 @@ const STAND_SLACK = 2
  * - 'badge'    { id, name }
  * - 'reward'   { label, wins? }  an ad reward or Gems purchase landed
  * - 'world'    { world, first }  stepped through the portal into `world`
+ * - 'quest'    { index, text }  one of today's quests just finished (claim it in Quests)
+ * - 'streak'   { days, broke, multiplier }  a new day of the login streak while playing
+ *
+ * The roll event also carries `combo` (PERFECTs in a row), `others` (players in the
+ * server paying the friends bonus) and `gift` (a lucky gift it landed, or null). The
+ * session state sent with every profile carries `streak`: today's login streak news.
  *
  * `onRoll(result)` lets the host tell other players about a roll (ghost tires).
  */
@@ -71,16 +80,32 @@ export class PlayerSession {
    * @param {{ now: number, emit: (type: string, payload?: object) => void,
    *           getPosition: () => {x: number, y: number, z: number},
    *           onPurchase?: (productId: string) => boolean,
-   *           onRoll?: (result: object) => void }} options
-   *   `onPurchase` lets the host veto or count a shop sale (stock limits).
+   *           onRoll?: (result: object) => void, getOthers?: () => number,
+   *           rand?: () => number }} options
+   *   `onPurchase` lets the host veto or count a shop sale (stock limits). `getOthers`
+   *   says how many other players share your server and world (the friends bonus).
    */
-  constructor(profile, { now, emit, getPosition, onPurchase, onRoll }) {
+  constructor(profile, { now, emit, getPosition, onPurchase, onRoll, getOthers, rand = Math.random }) {
     this.profile = profile
     this.session = createSession(now)
     this.emit = emit
     this.getPosition = getPosition
     this.onPurchase = onPurchase
     this.onRoll = onRoll
+    this.getOthers = getOthers
+    this.rand = rand
+
+    // Coming back: today counts into the login streak (the client shows the news from
+    // the session state), today's quests are dealt, and a fresh PERFECT combo.
+    this.session.streak = applyStreak(profile, now)
+    this.session.combo = 0
+    ensureQuests(profile, now)
+    this.day = dayNumber(now)
+    /** Seconds played towards the next "play for N minutes" quest minute. */
+    this.minuteTimer = 0
+    /** Quest progress not yet sent, and seconds since it last was. */
+    this.questsChanged = false
+    this.questSync = 0
 
     /** Pad the client says it's on; verified against position every tick. */
     this.pad = -1
@@ -101,6 +126,8 @@ export class PlayerSession {
 
   sendProfile() {
     this.dirty = false
+    this.questsChanged = false
+    this.questSync = 0
     this.emit('profile', { profile: this.profile, session: this.session })
   }
 
@@ -114,6 +141,18 @@ export class PlayerSession {
 
   tutorial(event) {
     if (advanceTutorial(this.profile, event)) this.dirty = true
+  }
+
+  /**
+   * Counts towards today's quests, and tells the client about any just finished. Plain
+   * progress goes to the client with the next profile (at most QUEST_SYNC later), not a
+   * whole profile per pull-up rep.
+   */
+  quest(counter, amount, now) {
+    const finished = progressQuests(this.profile, counter, amount, now)
+    if (amount > 0) this.questsChanged = true
+    if (finished.length) this.dirty = true
+    for (const index of finished) this.emit('quest', { index, text: questText(this.profile.quests.list[index]) })
   }
 
   // --- Intents ---------------------------------------------------------------------
@@ -168,7 +207,17 @@ export class PlayerSession {
       const p = this.getPosition()
       if (!inRollZone(p.x, p.z, ROLL_SLACK)) return
       const accuracy = Number.isFinite(payload?.accuracy) ? Math.min(1, Math.max(0, payload.accuracy)) : null
-      const result = applyRoll(this.profile, now, accuracy)
+      // PERFECTs in a row build a combo (anything less breaks it); friends in the server
+      // pay a bonus too. Then, sometimes, a lucky gift on top.
+      const grade = hitGrade(accuracy)
+      this.session.combo = grade?.id === 'perfect' ? (this.session.combo || 0) + 1 : 0
+      const combo = this.session.combo
+      const others = Math.max(0, Math.floor(this.getOthers?.() || 0))
+      // How far back down the stretch lane you were (no further than your arms reach).
+      const reach = maxPullFor(this.profile.equippedTire, this.profile.level, levelCap(this.profile.rebirths))
+      const pulled = Math.min(reach + 0.5, pullBackAt(p.x, p.z))
+      const result = applyRoll(this.profile, now, accuracy, comboBonus(combo) * crowdBonus(others), pulled / MAX_PULL)
+      const gift = rollLuckyGift(this.profile, this.rand)
       this.busyUntil = now + result.cooldown * 1000
       this.rollingUntil = now + result.duration * 1000
       this.rollTimer = 0
@@ -185,8 +234,18 @@ export class PlayerSession {
         hit: result.hit,
         best: result.best,
         tireId: this.profile.equippedTire,
+        combo,
+        others,
+        gift,
+        stretch: Math.round(pulled * 10) / 10,
       })
       this.onRoll?.(result)
+      this.quest('launch', 1, now)
+      if (result.hit === 'perfect' || result.hit === 'great') this.quest('great', 1, now)
+      if (result.hit === 'perfect') this.quest('perfect', 1, now)
+      this.quest('combo', combo, now)
+      this.quest('meters', result.distance, now)
+      this.quest('far', result.distance, now)
       // The HUD holds the new Wins back until the tire stops; the profile can go now.
       this.dirty = true
       this.tutorial('roll')
@@ -288,6 +347,20 @@ export class PlayerSession {
       this.emit('world', { world: result.world, first: Boolean(result.first) })
     },
 
+    claimQuest({ index }, now) {
+      const result = claimQuest(this.profile, Number(index), now)
+      if (!result.ok) return
+      this.dirty = true
+      this.emit('reward', { label: result.label, wins: result.wins, items: result.items })
+    },
+
+    claimQuestBonus(_payload, now) {
+      const result = claimQuestBonus(this.profile, now)
+      if (!result.ok) return
+      this.dirty = true
+      this.emit('reward', { label: result.label, wins: result.wins, items: result.items })
+    },
+
     usePotion({ itemId }, now) {
       const result = usePotion(this.profile, itemId, now)
       if (!result.ok) return
@@ -345,6 +418,7 @@ export class PlayerSession {
     if (!result?.ok || !result.pets?.length) return
     this.dirty = true
     this.emit('hatch', { eggId: result.eggId ?? null, pets: result.pets })
+    this.quest('hatch', result.pets.length, Date.now())
     this.tutorial('hatch')
     this.badge('firstPet')
   }
@@ -420,6 +494,26 @@ export class PlayerSession {
       }
     }
     this.profile.stats.playtime += dt
+    // A minute played towards today's quests; and past midnight, a new day: fresh
+    // quests and the next day of the streak.
+    this.minuteTimer += dt
+    if (this.minuteTimer >= 60) {
+      this.minuteTimer -= 60
+      this.quest('minute', 1, now)
+    }
+    this.questSync += dt
+    if (this.questsChanged && this.questSync >= QUEST_SYNC) this.dirty = true
+    const day = dayNumber(now)
+    if (day !== this.day) {
+      this.day = day
+      if (ensureQuests(this.profile, now)) this.dirty = true
+      const streak = applyStreak(this.profile, now)
+      if (streak.changed) {
+        this.session.streak = streak
+        this.dirty = true
+        this.emit('streak', streak)
+      }
+    }
     if (this.dirty) this.sendProfile()
   }
 
@@ -451,6 +545,7 @@ export class PlayerSession {
       return
     }
     this.gain('pad', this.pad, result)
+    this.quest('rep', 1, now)
     this.tutorial('train')
   }
 }

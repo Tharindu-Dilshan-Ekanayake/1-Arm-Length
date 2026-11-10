@@ -1,11 +1,12 @@
 import { RUN_CADENCE } from '../game/kick'
 
+import { useQuality } from '../store/quality'
 import { createCrowd } from './crowd'
 import { createMusic } from './music'
 
 /**
- * Sound effects, the stadium crowd and the background music, synthesised with WebAudio:
- * no audio files to download.
+ * Sound effects, the crowd and the background music, synthesised with WebAudio: no audio
+ * files to download.
  *
  * Browsers only allow audio after a user gesture. The audio engine (AudioContext, echo,
  * noise, music) is built while the game loads (prepareAudio), where it costs nothing
@@ -78,6 +79,13 @@ export function prepareAudio() {
   crowd = createCrowd(ctx, master, noiseBuffer)
 }
 
+/**
+ * Low-end devices (the LOW preset) get no crowd: its cheers and claps are dozens of audio
+ * nodes at a time, built on the main thread - on a slow phone, frames lost mid-flight.
+ */
+const lite = () => useQuality.getState().level === 'LOW'
+const liveCrowd = () => (lite() ? null : crowd)
+
 let musicStarted = false
 function unlock() {
   // Built already while loading, normally; on the spot if a tap beat it to it.
@@ -86,7 +94,7 @@ function unlock() {
   if (!musicStarted) {
     musicStarted = true
     music.start()
-    crowd.start()
+    liveCrowd()?.start()
   }
   if (adMuted) ctx.suspend()
   else if (ctx.state === 'suspended') ctx.resume()
@@ -174,15 +182,15 @@ export function onMutedChange(listener) {
   return () => muteListeners.delete(listener)
 }
 
-// --- The flight: the football tumbling through the air ----------------------------------
+// --- The flight: rushing through the air ------------------------------------------------
 
 let ride = null
 let rideSetAt = 0
 
 /**
- * The ball in flight: a low, soft "whup... whup..." as the football tumbles end over end,
- * quickening with its speed - a round, low-passed sound with no hiss in it - while the
- * crowd "ooohs". The music ducks under it until `windStop`.
+ * You in flight: a low, soft rush of air, swelling and fluttering with your speed - a
+ * round, low-passed sound with no hiss in it - while the crowd "ooohs". The music ducks
+ * under it until `windStop`.
  */
 function windStart() {
   if (!ctx || ride || ctx.state !== 'running') return
@@ -216,12 +224,12 @@ function windStart() {
   hum.start(t)
   ride = { src, air, body, tumble, depth, hum, humGain }
   music?.duck(true)
-  crowd?.anticipate(true)
+  liveCrowd()?.anticipate(true)
 }
 
 /**
- * `level` 0..1 from the ball's speed; `airborne` while it flies (silent once it lands:
- * the landing's own sounds take over). Positional: it's called every frame.
+ * `level` 0..1 from your speed; `airborne` while you fly (silent once you land: the
+ * landing's own sounds take over). Positional: it's called every frame.
  */
 function windSet(level, airborne = false) {
   if (!ride) return
@@ -253,62 +261,98 @@ function windStop() {
   tumble.stop(t + 1)
   hum.stop(t + 1)
   music?.duck(false)
-  crowd?.anticipate(false)
+  liveCrowd()?.anticipate(false)
 }
 
-// --- The treadmill: the belt's hum and your feet pounding it -------------------------
+// --- The pull-up bar: a springy boing every rep ----------------------------------------
 
-/** Seconds between footfalls running on a treadmill: two a stride (kick.RUN_CADENCE). */
-const FOOTFALL = Math.PI / RUN_CADENCE
-let belt = null
+/** Seconds between reps on a bar: one a TRAIN_INTERVAL (kick.RUN_CADENCE is its phase speed). */
+const REP = (Math.PI * 2) / RUN_CADENCE
+let bar = null
 
 /**
- * Starts the treadmill under you: the motor's soft whirr and your footfalls in time with
- * the run (scheduled a little ahead on the audio clock, like the music). No hiss: the
- * belt is a low hum and the steps are thuds. Stopped by treadmillStop when you step off.
+ * Starts the reps' sound under you: each pull-up a rubbery "boi-oing" as your arms snap
+ * short and a soft creak as they stretch back out (scheduled a little ahead on the audio
+ * clock, like the music). Stopped by treadmillStop (the template's name) when you let go.
  */
 function treadmillStart() {
-  if (!ctx || belt || silent() || ctx.state !== 'running') return
-  const t = ctx.currentTime
-  const motor = ctx.createOscillator()
-  motor.type = 'triangle'
-  motor.frequency.setValueAtTime(35, t)
-  motor.frequency.exponentialRampToValueAtTime(74, t + 0.6)
-  const motorTone = ctx.createBiquadFilter()
-  motorTone.type = 'lowpass'
-  motorTone.frequency.value = 180
-  const motorGain = ctx.createGain()
-  motorGain.gain.setValueAtTime(0.0001, t)
-  motorGain.gain.setTargetAtTime(0.03, t, 0.3)
-  motor.connect(motorTone).connect(motorGain).connect(master)
-  motor.start(t)
-  let next = t + 0.35
-  let left = true
+  if (!ctx || bar || silent() || ctx.state !== 'running') return
+  let next = ctx.currentTime + REP * 0.25
   const schedule = () => {
     next = Math.max(next, ctx.currentTime + 0.02)
-    while (next < ctx.currentTime + 0.3) {
-      // A soft thud of a trainer on rubber, each foot a touch different.
+    while (next < ctx.currentTime + 0.4) {
       const at = next - ctx.currentTime
-      tone(left ? 88 : 98, { at, duration: 0.09, volume: 0.07, slideTo: 48 })
-      tone(left ? 210 : 230, { type: 'triangle', at, duration: 0.03, volume: 0.02, slideTo: 140 })
-      left = !left
-      next += FOOTFALL
+      tone(150, { type: 'triangle', at, duration: 0.2, volume: 0.06, slideTo: 380 })
+      tone(760, { type: 'sine', at: at + 0.02, duration: 0.07, volume: 0.02, slideTo: 1100 })
+      tone(120, { type: 'sawtooth', at: at + REP * 0.5, duration: 0.18, volume: 0.012, slideTo: 85 })
+      next += REP
     }
   }
-  belt = { motor, motorGain, timer: setInterval(schedule, 100) }
+  bar = { timer: setInterval(schedule, 100) }
   schedule()
 }
 
-/** Stepping off the treadmill: the belt winds down and the footfalls stop. */
+/** Letting go of the bar: the reps stop. */
 function treadmillStop() {
-  if (!belt) return
-  const { motor, motorGain, timer } = belt
-  belt = null
-  clearInterval(timer)
+  if (!bar) return
+  clearInterval(bar.timer)
+  bar = null
+}
+
+// --- The stretch: rubber creaking as you pull back on the launch posts ---------------
+
+let stretch = null
+let stretchSetAt = 0
+
+/**
+ * Holding LAUNCH: a taut rubber creak that climbs in pitch the further back you pull and,
+ * once it's full, trembles with every twang. Moved by stretchSet, stopped by stretchStop.
+ */
+function stretchStart() {
+  if (!ctx || stretch || silent() || ctx.state !== 'running') return
   const t = ctx.currentTime
-  motorGain.gain.setTargetAtTime(0.0001, t, 0.2)
-  motor.frequency.setTargetAtTime(25, t, 0.3)
-  motor.stop(t + 1)
+  const osc = ctx.createOscillator()
+  osc.type = 'sawtooth'
+  osc.frequency.value = 70
+  const filter = ctx.createBiquadFilter()
+  filter.type = 'bandpass'
+  filter.frequency.value = 520
+  filter.Q.value = 3
+  const gain = ctx.createGain()
+  gain.gain.setValueAtTime(0.0001, t)
+  gain.gain.setTargetAtTime(0.03, t, 0.05)
+  // The creak: the rubber's loudness fluttering fast.
+  const lfo = ctx.createOscillator()
+  lfo.frequency.value = 14
+  const depth = ctx.createGain()
+  depth.gain.value = 0.018
+  lfo.connect(depth).connect(gain.gain)
+  osc.connect(filter).connect(gain).connect(master)
+  osc.start(t)
+  lfo.start(t)
+  stretch = { osc, filter, gain, lfo }
+}
+
+/** `charge` 0-1, the stretch meter; `full` once it twangs. Called every frame. */
+function stretchSet(charge, full = false) {
+  if (!stretch) return
+  const now = performance.now()
+  if (now - stretchSetAt < 40) return
+  stretchSetAt = now
+  const t = ctx.currentTime
+  stretch.osc.frequency.setTargetAtTime(70 + charge * 200, t, 0.03)
+  stretch.filter.frequency.setTargetAtTime(480 + charge * 1500, t, 0.04)
+  stretch.lfo.frequency.setTargetAtTime(full ? 32 : 12 + charge * 10, t, 0.05)
+}
+
+function stretchStop() {
+  if (!stretch) return
+  const { osc, gain, lfo } = stretch
+  stretch = null
+  const t = ctx.currentTime
+  gain.gain.setTargetAtTime(0.0001, t, 0.03)
+  osc.stop(t + 0.3)
+  lfo.stop(t + 0.3)
 }
 
 function ready(name, minGapMs = 0) {
@@ -319,9 +363,31 @@ function ready(name, minGapMs = 0) {
   return true
 }
 
+/**
+ * Runs `build(t)` for a sound due `at` seconds from now: straight away when it's due
+ * soon, otherwise just before it's due (`t` still lands it on time). So a chord, a run of
+ * bells or a round of applause doesn't create dozens of audio nodes in the one frame that
+ * asked for it - on a slow phone that frame stuck.
+ */
+export function whenDue(at, build) {
+  const due = ctx.currentTime + at
+  if (at <= LEAD) {
+    build(due)
+    return
+  }
+  setTimeout(() => {
+    if (ctx) build(Math.max(ctx.currentTime, due))
+  }, (at - LEAD) * 1000)
+}
+/** How early (s) a deferred sound is built before it's due. */
+const LEAD = 0.06
+
 /** A short enveloped oscillator note; `echo` also sends it into the echo. */
-function tone(freq, { type = 'sine', at = 0, duration = 0.12, volume = 0.3, slideTo = null, attack = 0.01, echo: wet = false } = {}) {
-  const t = ctx.currentTime + at
+function tone(freq, opts = {}) {
+  whenDue(opts.at ?? 0, (t) => toneAt(freq, t, opts))
+}
+
+function toneAt(freq, t, { type = 'sine', duration = 0.12, volume = 0.3, slideTo = null, attack = 0.01, echo: wet = false } = {}) {
   const osc = ctx.createOscillator()
   const gain = ctx.createGain()
   osc.type = type
@@ -351,8 +417,11 @@ let trophyRun = 0
 let trophyAt = 0
 
 /** Filtered noise: whooshes and cracks. */
-function noise({ at = 0, duration = 0.3, volume = 0.25, from = 400, to = 2400, q = 1.2 } = {}) {
-  const t = ctx.currentTime + at
+function noise(opts = {}) {
+  whenDue(opts.at ?? 0, (t) => noiseAt(t, opts))
+}
+
+function noiseAt(t, { duration = 0.3, volume = 0.25, from = 400, to = 2400, q = 1.2 } = {}) {
   const src = ctx.createBufferSource()
   src.buffer = noiseBuffer
   const filter = ctx.createBiquadFilter()
@@ -383,7 +452,7 @@ export const sfx = {
     if (!ready('levelUp')) return
     ;[523, 659, 784, 1047].forEach((f, i) => tone(f, { type: 'square', at: i * 0.07, duration: 0.14, volume: 0.09 }))
   },
-  /** Your tire setting off down the track: a kick, a whoosh, a rising boing and a sparkle. */
+  /** Shooting past the launch posts: a thump, a whoosh, a rising boing and a sparkle. */
   rollStart() {
     if (!ready('rollStart')) return
     tone(110, { duration: 0.18, volume: 0.16, slideTo: 55 })
@@ -391,21 +460,16 @@ export const sfx = {
     tone(220, { type: 'triangle', duration: 0.32, volume: 0.09, slideTo: 660 })
     bell(1319, { at: 0.2, volume: 0.05, decay: 0.3 })
   },
-  /** The leg swinging back and through, just before the kick lands: a quick swish. */
-  kickSwing() {
-    if (ready('kickSwing', 200)) noise({ duration: 0.22, volume: 0.1, from: 600, to: 2200, q: 0.7 })
-  },
   /**
-   * The boot smashing the football: the deep thump of a pumped-up leather ball, the
-   * slap of the boot on it, and a hollow "pock" from inside the ball.
+   * Letting go of the stretch (`power` 0-1, how far back you'd pulled): the rubber's big
+   * twang dropping in pitch, a slap, and the rush of being slung forward.
    */
-  kick() {
-    if (!ready('kick', 200)) return
-    tone(118, { duration: 0.22, volume: 0.32, slideTo: 42 })
-    tone(240, { type: 'triangle', duration: 0.09, volume: 0.14, slideTo: 120 })
-    noise({ duration: 0.06, volume: 0.34, from: 1400, to: 520, q: 1.1 })
-    noise({ duration: 0.025, volume: 0.16, from: 3800, to: 2600, q: 1.5 })
-    tone(560, { duration: 0.06, volume: 0.06, slideTo: 380 })
+  rubberSnap(power = 1) {
+    if (!ready('rubberSnap', 250)) return
+    tone(520 + 300 * power, { type: 'triangle', duration: 0.32, volume: 0.17, slideTo: 130 })
+    tone(260 + 120 * power, { type: 'sawtooth', duration: 0.14, volume: 0.05, slideTo: 90 })
+    noise({ duration: 0.05, volume: 0.25, from: 2400, to: 900, q: 1.2 })
+    noise({ at: 0.06, duration: 0.4, volume: 0.1 * (0.5 + power * 0.5), from: 300, to: 2600, q: 0.7 })
   },
   /** A referee's whistle: a pea-whistle's trilling blast, two of them when `long`. */
   whistle(long = false) {
@@ -436,13 +500,13 @@ export const sfx = {
     }
   },
   /**
-   * The ball thumping down on the turf from the top of its arc (`power` 0-1, how high it
-   * fell): a deep, soft thud, the hollow bounce of the ball, a short scuff of grass, and
-   * a few clods of soil pattering down - the crowd roaring over it.
+   * You belly-flopping onto the turf from the top of the arc (`power` 0-1, how high you
+   * fell): a deep, soft thud, a rubbery bounce, a short scuff of grass, and a few clods of
+   * soil pattering down - the crowd roaring over it.
    */
   groundSmash(power = 1) {
     if (!ready('groundSmash', 400)) return
-    crowd?.roar(0.5 + 0.5 * power)
+    liveCrowd()?.roar(0.5 + 0.5 * power)
     const p = 0.6 + 0.4 * power
     tone(95, { duration: 0.6, volume: 0.32 * p, slideTo: 32 })
     tone(190, { type: 'triangle', duration: 0.14, volume: 0.1 * p, slideTo: 95 })
@@ -451,20 +515,20 @@ export const sfx = {
       tone(300 + Math.random() * 220, { type: 'triangle', at: 0.14 + i * 0.07 + Math.random() * 0.04, duration: 0.04, volume: 0.03 * p, slideTo: 190 })
     }
   },
-  /** The ball bouncing on after it lands (`n` 1, 2, 3...): a thud and a tok, softer each time. */
+  /** Bouncing on after you land (`n` 1, 2, 3...): a thud and a boing, softer each time. */
   bounce(n = 1) {
     if (!ready('bounce', 120)) return
     const v = 0.16 / n
     tone(150, { duration: 0.16, volume: v, slideTo: 60 })
     tone(1250 - n * 90, { duration: 0.04, volume: v * 0.7, slideTo: 900 })
   },
-  /** A cartoon falling whistle over `duration` seconds, as the ball drops from the top of its arc. */
+  /** A cartoon falling whistle over `duration` seconds, as you drop from the top of the arc. */
   fallWhistle(duration = 1.5) {
     if (!ready('fallWhistle', 300) || duration < 0.3) return
     tone(1800, { duration, volume: 0.045, slideTo: 420, attack: Math.min(0.3, duration * 0.2) })
   },
   /**
-   * A PERFECT kick: a crack of the boot, fire bursting up with a deep fwoosh and a
+   * A PERFECT launch: a crack of the rubber, fire bursting up with a deep fwoosh and a
    * crackle, and a bright chime climbing up.
    */
   perfectHit() {
@@ -477,7 +541,7 @@ export const sfx = {
     ;[784, 1047, 1319, 1568, 2093].forEach((f, i) => bell(f, { at: 0.04 + i * 0.05, volume: 0.07, decay: 0.35 }))
   },
   /**
-   * A good hit's ball blasting away as time snaps back (`power` 0-1, the grade's): a deep
+   * A good launch blasting you away as time snaps back (`power` 0-1, the grade's): a deep
    * boom and a rising whoosh.
    */
   perfectRelease(power = 1) {
@@ -486,7 +550,7 @@ export const sfx = {
     noise({ duration: 0.3, volume: 0.12 * power, from: 250, to: 1800, q: 0.7 })
     tone(440, { type: 'triangle', duration: 0.35, volume: 0.06 * power, slideTo: 1760 })
   },
-  /** The boot smashing the ball on a graded kick: its own sound for each grade. */
+  /** Shooting past the posts on a graded launch: its own sound for each grade. */
   gradeHit(grade) {
     if (grade === 'perfect') return sfx.perfectHit()
     if (!ready('gradeHit', 300)) return
@@ -502,7 +566,7 @@ export const sfx = {
       bell(2093, { at: 0.08, volume: 0.05, decay: 0.25 })
     }
   },
-  /** A WEAK kick: a dull, soft plop off the side of the boot. */
+  /** A WEAK launch: a dull, soft flop off a slack rubber band. */
   weakHit() {
     if (!ready('weakHit', 300)) return
     tone(320, { duration: 0.12, volume: 0.12, slideTo: 140 })
@@ -548,7 +612,7 @@ export const sfx = {
   /** A new stage reached mid-roll: a quick, cheerful rising jingle. */
   stageUp() {
     if (!ready('stageUp', 300)) return
-    crowd?.whoo(2)
+    liveCrowd()?.whoo(2)
     ;[659, 784, 988, 1319].forEach((f, i) => tone(f, { type: 'triangle', at: i * 0.06, duration: 0.16, volume: 0.08, echo: true }))
     for (let i = 0; i < 3; i += 1) bell(1760 + Math.random() * 900, { at: 0.24 + i * 0.05, volume: 0.03, decay: 0.18 })
   },
@@ -575,12 +639,15 @@ export const sfx = {
     trophyAt = now
     const n = TROPHY_SCALE.length
     const k = trophyRun % (2 * n - 2)
-    bell(TROPHY_SCALE[k < n ? k : 2 * n - 2 - k], { volume: 0.085, decay: 0.32 })
+    const f = TROPHY_SCALE[k < n ? k : 2 * n - 2 - k]
+    // LOW: one note, not a three-voice bell (they come many a second).
+    if (lite()) tone(f, { duration: 0.22, volume: 0.085 })
+    else bell(f, { volume: 0.085, decay: 0.32 })
   },
   /** Wins paid out (a roll's total, a badge): a fanfare, a shimmering chord and a shower of coins. */
   wins() {
     if (!ready('wins')) return
-    crowd?.applause()
+    liveCrowd()?.applause()
     ;[784, 988, 1175, 1568].forEach((f, i) => tone(f, { type: 'triangle', at: i * 0.07, duration: 0.2, volume: 0.1, echo: true }))
     // G major, held, each voice doubled a hair apart so it shimmers.
     for (const f of [784, 988, 1175]) {
@@ -609,11 +676,11 @@ export const sfx = {
   rebirth() {
     if (!ready('rebirth')) return
     sfx.whistle(true)
-    crowd?.roar(1)
+    liveCrowd()?.roar(1)
     noise({ duration: 0.5, volume: 0.07, from: 200, to: 1800, q: 0.6 })
     ;[262, 330, 392, 523, 659, 784].forEach((f, i) => tone(f, { type: 'sawtooth', at: 0.1 + i * 0.07, duration: 0.25, volume: 0.06 }))
   },
-  /** Stepping onto an unlocked treadmill: a soft rising chime, and the belt starts. */
+  /** Grabbing an unlocked pull-up bar: a soft rising chime, and the reps start. */
   treadmillEnter() {
     if (!ready('treadmillEnter', 400)) return
     ;[523, 784, 1047].forEach((f, i) => tone(f, { type: 'sine', at: i * 0.05, duration: 0.28, volume: 0.07 }))
@@ -631,8 +698,7 @@ export const sfx = {
     noise({ duration: 0.08, volume: 0.06, from: 900, to: 300, q: 0.7 })
   },
   /**
-   * The ball settling at the end of its hops: two soft thuds on the turf, the second
-   * smaller. (Only tones: the old tire's grit spray hissed.)
+   * Settling at the end of your bounces: two soft thuds on the turf, the second smaller.
    */
   rollStop() {
     if (!ready('rollStop')) return
@@ -642,6 +708,9 @@ export const sfx = {
   windStart,
   windSet,
   windStop,
+  stretchStart,
+  stretchSet,
+  stretchStop,
 }
 
 // The template's names, kept as aliases while callers move over to the tire ones.

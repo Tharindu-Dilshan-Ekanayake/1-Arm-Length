@@ -31,6 +31,7 @@ import ShaderWarmup from './ShaderWarmup'
 import { FOG, SKY } from './sceneStyle'
 import Sky from './Sky'
 import World from './world/World'
+import LaunchReach from './world/LaunchReach'
 import { showLobbySky } from './worldLook'
 
 // r3f-perf is a dev-only overlay (?perf in the URL). The DEV check is static, so the
@@ -40,7 +41,7 @@ const DevPerf = import.meta.env.DEV
   : null
 const showDevPerf = import.meta.env.DEV && new URLSearchParams(window.location.search).has('perf')
 
-// The track is its own chunk, fetched once the lobby is on screen so it never delays
+// The runway is its own chunk, fetched once the lobby is on screen so it never delays
 // time-to-playable.
 const Roll = lazy(() => import('./roll/Roll'))
 
@@ -85,15 +86,15 @@ function ViewDistance({ far }) {
 
 /**
  * The camera's vertical field of view for a screen `aspect` wide: 60 degrees on a
- * landscape screen; wider on one held upright, so the field, the treadmills and the balls
+ * landscape screen; wider on one held upright, so the runway, the pull-up bars and the arms
  * still fit across a phone in portrait instead of being cropped to a narrow slit.
  */
 const fovForAspect = (aspect) => (aspect >= 1 ? 60 : Math.min(84, 60 / Math.sqrt(Math.max(0.3, aspect))))
 
 /**
  * Keeps the field of view right for the screen's shape as the phone turns. Left alone
- * while you kick (Roll.jsx animates the lens then, from this as its base), and put
- * right again once the kick is over.
+ * while you fly (Roll.jsx animates the lens then, from this as its base), and put
+ * right again once the launch is over.
  */
 function AspectFov() {
   const get = useThree((s) => s.get)
@@ -249,6 +250,7 @@ export function GameScene({ onReady }) {
         <WorldSky world={world} />
         <Lighting />
         <World />
+        <LaunchReach />
         <WorldLabels />
         <TireShop />
         <EggDisplays />

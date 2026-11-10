@@ -2,6 +2,7 @@ import {
   AD_REWARDS,
   BADGES,
   DAILY_INTERVAL_MS,
+  dayNumber,
   DAILY_REWARDS,
   EGGS,
   FREE_REWARD,
@@ -30,6 +31,9 @@ import {
   SECRET_STAR,
   rollDuration,
   SHOP,
+  streakMultiplier,
+  STRETCH_REACH,
+  STRETCH_WINS,
   TIRES,
   TRAIN_INTERVAL,
   TROPHY_FIRST,
@@ -99,6 +103,10 @@ export function createProfile(id, name) {
     lastPad: -1,
     lastSeen: 0,
     settings: { autoRebirth: false, autoRoll: false },
+    /** Today's quests (engage.js): the day they're for, the three, the bonus chest taken. */
+    quests: { day: -1, list: [], bonus: false },
+    /** Login streak: the last day played (balance.dayNumber), days in a row, the best run. */
+    streak: { day: -1, days: 0, best: 0 },
   }
 }
 
@@ -111,6 +119,22 @@ export function normalizeProfile(raw, id, name) {
   p.stats = { ...base.stats, ...(raw.stats || {}) }
   p.settings = { ...base.settings, ...(raw.settings || {}) }
   p.daily = { ...base.daily, ...(raw.daily || {}) }
+  const streak = raw.streak && typeof raw.streak === 'object' ? raw.streak : {}
+  p.streak = {
+    day: Number.isInteger(streak.day) ? streak.day : -1,
+    days: Math.max(0, Math.floor(streak.days) || 0),
+    best: Math.max(0, Math.floor(streak.best) || 0),
+  }
+  const quests = raw.quests && typeof raw.quests === 'object' ? raw.quests : {}
+  p.quests = {
+    day: Number.isInteger(quests.day) ? quests.day : -1,
+    list: Array.isArray(quests.list)
+      ? quests.list
+          .filter((q) => q && typeof q.type === 'string' && Number.isFinite(q.target))
+          .map((q) => ({ type: q.type, tier: Math.max(0, Math.min(2, Math.floor(q.tier) || 0)), target: q.target, progress: Math.max(0, Number(q.progress) || 0), claimed: q.claimed === true }))
+      : [],
+    bonus: quests.bonus === true,
+  }
   p.items = Object.fromEntries(Object.entries(raw.items || {}).filter(([itemId]) => ITEMS[itemId]))
   p.passes = Object.fromEntries(Object.entries(raw.passes || {}).filter(([productId]) => SHOP[productId]))
   p.health = Number.isFinite(raw.health) ? Math.max(0, raw.health) : 0
@@ -213,9 +237,19 @@ export function healthBoostMultiplier(profile, now) {
   return (profile.passes.healthX2 ? 2 : 1) * (isBoostActive(profile, 'health', now) ? 2 : 1)
 }
 
-/** The x2 Wins pass and potion; they stack. */
+/**
+ * Days in a row you've played, as of `now`: your streak while it's alive (played today
+ * or yesterday), else 0. (engage.applyStreak counts the days.)
+ */
+export function streakDays(profile, now) {
+  const s = profile.streak
+  if (!s || s.days <= 0) return 0
+  return dayNumber(now) - s.day <= 1 ? s.days : 0
+}
+
+/** The x2 Wins pass and potion (they stack), and your login streak's bonus. */
 export function winsMultiplier(profile, now) {
-  return (profile.passes.winsX2 ? 2 : 1) * (isBoostActive(profile, 'wins', now) ? 2 : 1)
+  return (profile.passes.winsX2 ? 2 : 1) * (isBoostActive(profile, 'wins', now) ? 2 : 1) * streakMultiplier(streakDays(profile, now))
 }
 
 /** Palm Beach's Secret Star, once found: x2 Power for good, in every world. */
@@ -257,7 +291,7 @@ function addHealth(profile, gain) {
 }
 
 export function applyTrain(profile, index, now) {
-  if (!isPadUnlocked(profile, index)) return { ok: false, error: 'Pad locked' }
+  if (!isPadUnlocked(profile, index)) return { ok: false, error: 'Bar locked' }
   profile.lastPad = index
   return { ok: true, ...addHealth(profile, padGain(profile, index, now)) }
 }
@@ -368,11 +402,14 @@ export const rollWinsAt = (health, world = 0) => baseRollWins(rollOutcome(health
  * would multiply a PERFECT kick's Wins dozens of times over late in the game. Without
  * the meter (Auto Kick) the kick is a plain x1 kick.
  */
-export function applyRoll(profile, now, accuracy = null) {
-  const outcome = rollOutcome(profile.health, hitReach(accuracy))
+export function applyRoll(profile, now, accuracy = null, bonus = 1, stretch = 0) {
+  // `stretch` (0-1): how much of the 40 m stretch lane you'd walked back - further and richer.
+  const pulled = Math.min(1, Math.max(0, Number(stretch) || 0))
+  const outcome = rollOutcome(profile.health, hitReach(accuracy) * (1 + STRETCH_REACH * pulled))
   const distance = Math.round(outcome.distance * 10) / 10
   const grade = hitGrade(accuracy)
-  const multiplier = winsMultiplier(profile, now) * (grade ? grade.bonus : 1)
+  // `bonus`: the session's own multipliers (a PERFECT combo, friends in the server).
+  const multiplier = winsMultiplier(profile, now) * (grade ? grade.bonus : 1) * Math.max(1, Number(bonus) || 1) * (1 + STRETCH_WINS * pulled)
   const world = profile.world
   const worth = Math.round(rollReach(profile.health) * 10) / 10
   const wins = Math.max(1, Math.round(baseRollWins(worth, world) * multiplier))
@@ -411,6 +448,40 @@ export function applyRoll(profile, now, accuracy = null) {
 
 /** Wins (before multipliers) of a roll at your max level: what packs and skips cost in. */
 export const maxRollWins = (profile) => rollWinsAt(healthForLevel(levelCap(profile.rebirths)), profile.world)
+
+/** `rolls` max-level launches' worth of Wins: rewards that grow with you. */
+export const winsForRolls = (profile, rolls) => Math.max(10, Math.round(maxRollWins(profile) * rolls))
+
+/** The egg item that fits how far you've got: a reward that's always worth opening. */
+export function eggItemFor(profile) {
+  if (profile.rebirths >= 10) return 'eggVolcano'
+  if (profile.rebirths >= 5) return 'eggUnicorn'
+  if (profile.rebirths >= 2) return 'eggSunset'
+  return 'eggMeadow'
+}
+
+/**
+ * Pays a reward grant of { winsRolls?, item?, egg? } (quests, lucky gifts). Returns what
+ * was given: { wins, items: [itemId...] }.
+ */
+export function payReward(profile, grant) {
+  const out = { wins: 0, items: [] }
+  if (grant.winsRolls) {
+    out.wins = winsForRolls(profile, grant.winsRolls)
+    profile.wins += out.wins
+    profile.stats.totalWins += out.wins
+  }
+  if (grant.item) {
+    addItem(profile, grant.item, 1)
+    out.items.push(grant.item)
+  }
+  if (grant.egg) {
+    const egg = eggItemFor(profile)
+    addItem(profile, egg, 1)
+    out.items.push(egg)
+  }
+  return out
+}
 
 /**
  * The Health packs as they stand for you now: `[{ amount, price }]`. Both follow the
@@ -474,7 +545,7 @@ export function usePortal(profile) {
 
 export function buyTire(profile, tireId) {
   const tire = TIRES.find((t) => t.id === tireId)
-  if (!tire) return { ok: false, error: 'Unknown tire' }
+  if (!tire) return { ok: false, error: 'Unknown arms' }
   if (profile.ownedTires.includes(tireId)) return equipTire(profile, tireId)
   const previous = TIRES[tireIndex(tireId) - 1]
   if (previous && !profile.ownedTires.includes(previous.id)) {
@@ -488,7 +559,7 @@ export function buyTire(profile, tireId) {
 }
 
 export function equipTire(profile, tireId) {
-  if (!profile.ownedTires.includes(tireId)) return { ok: false, error: 'You don’t own that tire' }
+  if (!profile.ownedTires.includes(tireId)) return { ok: false, error: 'You don’t own those arms' }
   profile.equippedTire = tireId
   return { ok: true, equipped: true, tireId }
 }

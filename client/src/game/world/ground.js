@@ -8,10 +8,9 @@ import {
   SRGBColorSpace,
 } from 'three'
 
-import { PLAZA, PORTALS, SHOP, TRACK_START_Z } from '@shared/world'
+import { PATH_HALF, PLAZA, PORTALS, SHOP, TRACK_START_Z } from '@shared/world'
 
-import { PALETTE, venueOf } from '../sceneStyle'
-import { BORDER, PITCH, TRACK } from './pitch'
+import { venueOf } from '../sceneStyle'
 
 /**
  * The plaza floor: one big plane whose colours come from a tiny "ground map" texture
@@ -23,7 +22,7 @@ import { BORDER, PITCH, TRACK } from './pitch'
  * decals over it: pitch.js, signs.js.)
  */
 
-const MAP = { minX: -64, maxX: 64, minZ: -44, maxZ: 48 }
+const MAP = { minX: -64, maxX: 64, minZ: -44, maxZ: PLAZA.maxZ + 12 }
 const MAP_W = MAP.maxX - MAP.minX
 const MAP_H = MAP.maxZ - MAP.minZ
 
@@ -51,43 +50,13 @@ function painter(ctx) {
 /** The ground map for `world`'s venue (car park and turf, or sand). */
 export function createGroundMap(maxTexture, world = 0) {
   const v = venueOf(world)
-  const colors = v.pitch
   const canvas = document.createElement('canvas')
   canvas.width = MAP_W
   canvas.height = MAP_H
   const ctx = canvas.getContext('2d')
   const { rect, disc } = painter(ctx)
 
-  // Car park (or sand) all round - the clamped map edge carries it on beyond the stands -
-  // then a strip round the plaza in bands two yards wide running out from it: mown turf,
-  // or raked sand at the beach.
-  rect(MAP, v.surround)
-  for (let e = 10; e > 0; e -= 2) {
-    rect({ minX: PLAZA.minX - e, maxX: PLAZA.maxX + e, minZ: PLAZA.minZ, maxZ: PLAZA.maxZ + e }, v.strip[(e / 2) % 2])
-  }
-
-  // The plaza: the navy sideline apron, the ball shop's yard on it, the portal's rings.
-  rect(PLAZA, colors.apron)
-  rect(SHOP, v.shopFloor)
-  for (const p of PORTALS) {
-    disc(p.x, p.z, 6, v.beach ? v.accent : PALETTE.apronEdge)
-    disc(p.x, p.z, 5, v.beach ? v.primary : PALETTE.apron)
-  }
-
-  // The field down the middle: a running track and a white border each side, mown bands
-  // between the goal lines, and the end zones - blue round the kick zone, red to the south.
-  const along = { minZ: PLAZA.minZ, maxZ: PLAZA.maxZ }
-  for (const side of [-1, 1]) {
-    const span = (a, b) => ({ minX: Math.min(side * a, side * b), maxX: Math.max(side * a, side * b), ...along })
-    rect(span(TRACK.from, TRACK.to), colors.track)
-    rect(span(BORDER.from, BORDER.to), colors.border)
-  }
-  const { half, north, south, yard } = PITCH
-  for (let z = north, k = 0; z < south - 0.01; z += yard, k += 1) {
-    rect({ minX: -half, maxX: half, minZ: z, maxZ: z + yard }, PALETTE.turf[k % 2])
-  }
-  rect({ minX: -half, maxX: half, minZ: PLAZA.minZ, maxZ: north }, colors.north)
-  rect({ minX: -half, maxX: half, minZ: south, maxZ: PLAZA.maxZ }, colors.south)
+  paintPark(rect, disc, v.beach ? PARKS.beach : PARKS.grass)
 
   const texture = new CanvasTexture(canvas)
   texture.colorSpace = SRGBColorSpace
@@ -97,6 +66,29 @@ export function createGroundMap(maxTexture, world = 0) {
   texture.wrapT = ClampToEdgeWrapping
   texture.anisotropy = maxTexture > 512 ? 4 : 1
   return texture
+}
+
+/** The lobby floor: mint (or sand at Palm Beach) and a candy path down the middle (the mesas ring it). */
+const PARKS = {
+  grass: { grass: ['#8fe3c0', '#9eeccb'], path: ['#ff6fae', '#ff86bc'], edge: '#ffffff', ring: '#c08cff', portal: '#a46cf0', yard: '#fff0d8' },
+  beach: { grass: ['#f2dca0', '#ead196'], path: ['#2fc8d8', '#48d6e4'], edge: '#ffffff', ring: '#e2bd7a', portal: '#16b8c4', yard: '#fbeed0' },
+}
+
+function paintPark(rect, disc, PARK) {
+  // Grass all round, in 4 m bands like big studded tiles.
+  rect(MAP, PARK.grass[0])
+  for (let z = MAP.minZ, k = 0; z < MAP.maxZ; z += 4, k += 1) rect({ minX: MAP.minX, maxX: MAP.maxX, minZ: z, maxZ: z + 4 }, PARK.grass[k % 2])
+  // The arm shop's tiled yard.
+  rect(SHOP, PARK.yard)
+  for (const p of PORTALS) {
+    disc(p.x, p.z, 6, PARK.ring)
+    disc(p.x, p.z, 5, PARK.portal)
+  }
+  // The blue path, white-edged, in light and dark 4 m bands.
+  rect({ minX: -PATH_HALF - 1, maxX: PATH_HALF + 1, minZ: PLAZA.minZ, maxZ: PLAZA.maxZ }, PARK.edge)
+  for (let z = PLAZA.minZ, k = 0; z < PLAZA.maxZ; z += 4, k += 1) {
+    rect({ minX: -PATH_HALF, maxX: PATH_HALF, minZ: z, maxZ: Math.min(PLAZA.maxZ, z + 4) }, PARK.path[k % 2])
+  }
 }
 
 /** How far the ground runs out at Palm Beach before the ocean (Ocean.jsx) takes over. */

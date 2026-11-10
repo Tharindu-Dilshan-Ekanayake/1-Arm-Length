@@ -83,9 +83,20 @@ export function createCrowd(ctx, destination, noiseBuffer) {
     }
   }
 
-  /** One handclap, `at` seconds from now: a few milliseconds of band-passed noise. */
+  /**
+   * One handclap, `at` seconds from now: a few milliseconds of band-passed noise. Built
+   * when it's due (a round of applause is a lot of claps: all at once, a slow phone stuck).
+   */
   function clap(at, volume) {
-    const t = ctx.currentTime + at
+    if (at > 0.06) {
+      const due = ctx.currentTime + at
+      setTimeout(() => clapAt(Math.max(ctx.currentTime, due), volume), (at - 0.06) * 1000)
+      return
+    }
+    clapAt(ctx.currentTime + at, volume)
+  }
+
+  function clapAt(t, volume) {
     const s = ctx.createBufferSource()
     s.buffer = noiseBuffer
     const filter = ctx.createBiquadFilter()

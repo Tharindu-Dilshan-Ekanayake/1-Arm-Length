@@ -318,6 +318,10 @@ export class LabelBatch {
   async update(id, spec) {
     const l = this.labels.get(id)
     if (!l?.page) return
+    // Unchanged: nothing to draw (redrawing re-uploads the whole page to the GPU).
+    const key = JSON.stringify(spec)
+    if (key === l.drawnKey) return
+    l.drawnKey = key
     await preload([spec])
     l.spec = { ...spec, pxPerUnit: l.spec.pxPerUnit }
     this.drawLabel(l, l.spec)

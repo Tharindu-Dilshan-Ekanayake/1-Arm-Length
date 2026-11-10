@@ -18,8 +18,8 @@ export function send(type, payload) {
 
 export const actions = {
   /**
-   * Kicks your ball; only counts standing on the KICK ZONE (the KICK! button sends
-   * it). `accuracy` (0-1) is where the timing meter stopped; leave it out for Auto Kick.
+   * Launches you; only counts on the LAUNCH PAD (the LET GO! button sends it).
+   * `accuracy` (0-1) is the stretch meter when you let go; leave it out for Auto Launch.
    */
   roll: (accuracy) => send('roll', Number.isFinite(accuracy) ? { accuracy } : undefined),
   enterPad: (pad) => send('enterPad', { pad }),
@@ -40,6 +40,9 @@ export const actions = {
   claimDaily: (day) => send('claimDaily', { day }),
   claimPlaytime: (index) => send('claimPlaytime', { index }),
   claimFreeReward: () => send('claimFreeReward'),
+  /** Claims today's finished quest `index` (0-2), or the bonus chest once all three are. */
+  claimQuest: (index) => send('claimQuest', { index }),
+  claimQuestBonus: () => send('claimQuestBonus'),
   setSetting: (key, value) => send('setting', { key, value }),
   portal: () => send('portal'),
   /** Picks up Palm Beach's Secret Star (the authority checks you're at it). */

@@ -3,7 +3,9 @@ import { useEffect, useRef } from 'react'
 import { Vector3 } from 'three'
 
 import { getBloxityState } from '../bloxity/store'
+import { launch } from './launch'
 import { placeLocalBubble } from './remote/nameplates'
+import { PULL_DIST } from './roll/path'
 import { runtime } from './runtime'
 
 /** How high above the player's feet the camera aims. */
@@ -27,6 +29,8 @@ const LOOK_SMOOTHING = 14
 
 const _desired = new Vector3()
 const _target = new Vector3()
+/** How far the view has swung round for the stretch (0-1), eased. */
+let stretchView = 0
 
 /**
  * Third-person orbit camera around the player.
@@ -129,10 +133,17 @@ export function FollowCamera() {
     }
     const delta = Math.min(rawDelta, 0.05)
     const p = runtime.player.position
-    _target.set(p.x, p.y + LOOK_HEIGHT, p.z)
+    // Holding the launch posts: swing round to three-quarters on, back and a little lower,
+    // so the stretching arms and the posts stay in view (and clear of the LAUNCH button
+    // below), more the further back you've walked.
+    const want = launch.gripping || launch.released ? 0.35 + 0.65 * Math.min(1, launch.back / PULL_DIST) : 0
+    stretchView += (want - stretchView) * (1 - Math.exp(-6 * delta))
+    _target.set(p.x, p.y + LOOK_HEIGHT - 1.3 * stretchView, p.z)
 
     // Spherical -> cartesian. yaw 0 puts the camera south of the player, looking north.
-    const { yaw, pitch, distance } = runtime.camera
+    const yaw = runtime.camera.yaw + 0.75 * stretchView
+    const pitch = runtime.camera.pitch + 0.16 * stretchView
+    const distance = runtime.camera.distance + 1.5 * stretchView
     const horizontal = Math.cos(pitch) * distance
     _desired.set(
       _target.x + Math.sin(yaw) * horizontal,
